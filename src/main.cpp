@@ -10,20 +10,6 @@
 using namespace std;
 using namespace bm;
 
-int increase(int i){
-    return i+10;
-}
-
-template<typename RetType, typename FuncType>
-class BMPipelineTask {
-public:
-    FuncType func;
-    BMPipelineTask(FuncType func): func(func) {}
-    template<typename ... ArgTypes>
-    RetType operator() (ArgTypes...args) {
-        return func(args...);
-    }
-};
 
 int main(){
     set_log_level(DEBUG);
@@ -101,6 +87,10 @@ int main_pipe(){
     return 0;
 }
 
+
+int increase(int i){
+    return i+10;
+}
 
 int main_1()
 {

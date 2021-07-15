@@ -4,8 +4,9 @@
 #include <thread>
 #include <mutex>
 #include <deque>
+#include <atomic>
 #include <condition_variable>
-#include "BMUtils.h"
+#include "BMCommonUtils.h"
 namespace bm {
 #define LOCK(name) std::lock_guard<std::mutex> guard(name##_mutex)
 
@@ -26,6 +27,8 @@ private:
     std::unique_ptr<Node> head;
     std::mutex tail_mutex;
     Node* tail;
+    size_t max_nodes;
+    std::atomic_uint32_t num_nodes;
     std::condition_variable data_cond;
     Node* getTail(){
         LOCK(tail);
@@ -34,6 +37,7 @@ private:
     std::unique_ptr<Node> popHead(){
         auto old_head = std::move(head);
         head = std::move(old_head->next);
+        num_nodes.fetch_sub(1, std::memory_order_acq_rel);
         return old_head;
     }
 
@@ -57,7 +61,7 @@ private:
     }
 
 public:
-    BMQueue(): head(new Node), tail(head.get()){}
+    BMQueue(size_t max_nodes=0): head(new Node), tail(head.get()), max_nodes(max_nodes), num_nodes(0) {}
 
     std::shared_ptr<T> tryPop() {
         auto oldHead = tryPopHead();
@@ -83,6 +87,14 @@ public:
         value = std::move(*oldHead->data);
     }
 
+    bool canPush() {
+        return  max_nodes!=0 && num_nodes<max_nodes;
+    }
+
+    void setMaxNode(size_t max){
+        max_nodes = max;
+    }
+
     void push(T new_value) {
         std::shared_ptr<T> new_data(
                     std::make_shared<T>(std::move(new_value)));
@@ -94,6 +106,7 @@ public:
             auto new_tail = new_node.get();
             tail->next = std::move(new_node);
             tail = new_tail;
+            num_nodes.fetch_add(1, std::memory_order_acq_rel);
         }
         data_cond.notify_one();
     }

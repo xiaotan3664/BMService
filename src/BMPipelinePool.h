@@ -1,6 +1,7 @@
 #ifndef BMPIPELINEPOOL_H
 #define BMPIPELINEPOOL_H
 #include <string>
+#include <set>
 #include <vector>
 #include <memory>
 #include <future>
@@ -8,8 +9,7 @@
 #include <typeinfo>
 #include <type_traits>
 #include "BMLog.h"
-#include "BMUtils.h"
-#include <set>
+#include "BMCommonUtils.h"
 #include "BMQueue.h"
 
 namespace bm {
@@ -282,6 +282,10 @@ public:
        }
        this->contextDeinitializer = contextDeinitializer;
    }
+
+    std::shared_ptr<BMQueue<InType>> getInputQueue(){
+        return inQueue;
+    }
 
     template<typename NodeInType, typename NodeOutType, typename Container = std::vector<NodeOutType>>
     void addNode(std::function<NodeOutType(const NodeInType&)> func,

@@ -11,7 +11,7 @@ typedef enum {
     DEBUG   = 0,
     INFO    = 1,
     WARNING = 2,
-    WRONG   = 3,
+    ERROR   = 3,
     FATAL   = 4,
 } LogLevel;
 
@@ -27,7 +27,7 @@ typename std::enable_if<level<FATAL , void>::type __bm_log(const char*fmt, ArgTy
 }
 
 template<int level, typename ... ArgTypes>
-typename std::enable_if<level==FATAL , void>::type __bm_log(const char*fmt, ArgTypes ...args){
+typename std::enable_if<level==FATAL , void>::type __bm_log(const char* fmt, ArgTypes ...args){
     char msg[1024];
     snprintf(msg, sizeof(msg)-1, fmt, args...);
     throw std::runtime_error(msg);
@@ -37,5 +37,30 @@ typename std::enable_if<level==FATAL , void>::type __bm_log(const char*fmt, ArgT
     __bm_log<LogLevel::severity>("[%s:%d] %s: " fmt "\n", __FILE__, __LINE__, #severity, ##__VA_ARGS__)
 
 };
+
+#define BM_ASSERT(cond, fmt, ...)                                  \
+    do                                                             \
+    {                                                              \
+        if (!(cond))                                               \
+        {                                                          \
+            BMLOG(FATAL, "assert " #cond ":" #fmt, ##__VA_ARGS__); \
+        }                                                          \
+    } while (0)
+
+#define BM_ASSERT_OP(v1, v2, OP)                                           \
+    do                                                                     \
+    {                                                                      \
+        if (not((v1)OP(v2)))                                               \
+        {                                                                  \
+            BMLOG(FATAL, "assert " #v1 "(%d)" #OP #v2 "(%d)", (v1), (v2)); \
+        }                                                                  \
+    } while (0)
+
+#define BM_ASSERT_EQ(v1, v2) BM_ASSERT_OP(v1, v2, =)
+#define BM_ASSERT_NE(v1, v2) BM_ASSERT_OP(v1, v2, !=)
+#define BM_ASSERT_LT(v1, v2) BM_ASSERT_OP(v1, v2, <)
+#define BM_ASSERT_GT(v1, v2) BM_ASSERT_OP(v1, v2, >)
+#define BM_ASSERT_LE(v1, v2) BM_ASSERT_OP(v1, v2, <=)
+#define BM_ASSERT_GE(v1, v2) BM_ASSERT_OP(v1, v2, >=)
 
 #endif // BMLOG_H
