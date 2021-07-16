@@ -50,13 +50,13 @@ typename std::enable_if<level==FATAL , void>::type __bm_log(const char* fmt, Arg
 #define BM_ASSERT_OP(v1, v2, OP)                                           \
     do                                                                     \
     {                                                                      \
-        if (not((v1)OP(v2)))                                               \
+        if (!((v1)OP(v2)))                                               \
         {                                                                  \
             BMLOG(FATAL, "assert " #v1 "(%d)" #OP #v2 "(%d)", (v1), (v2)); \
         }                                                                  \
     } while (0)
 
-#define BM_ASSERT_EQ(v1, v2) BM_ASSERT_OP(v1, v2, =)
+#define BM_ASSERT_EQ(v1, v2) BM_ASSERT_OP(v1, v2, ==)
 #define BM_ASSERT_NE(v1, v2) BM_ASSERT_OP(v1, v2, !=)
 #define BM_ASSERT_LT(v1, v2) BM_ASSERT_OP(v1, v2, <)
 #define BM_ASSERT_GT(v1, v2) BM_ASSERT_OP(v1, v2, >)

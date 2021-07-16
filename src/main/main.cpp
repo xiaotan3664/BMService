@@ -15,15 +15,17 @@ int main(){
     set_log_level(DEBUG);
     BMPipelinePool<int, int> pool(2);
     std::function<float(const int&)> func = [](int a){ return a+1.0; };
-    std::function<void(const float& a, int& b)> func1 = [](const float& a, int& b){
+    std::function<bool(const float& a, int& b)> func1 = [](const float& a, int& b){
         sleep(1);
 //        std::this_thread::sleep_for(chrono::seconds(1));
         b = (int)a*1.8;
+        return true;
     };
 
-    std::function<void(const int& a, int& b)> func2 = [](const int& a, int& b){
+    std::function<bool(const int& a, int& b)> func2 = [](const int& a, int& b){
         sleep(1);
         b = a*2;
+        return true;
     };
 
 //    pool.addNode([](const int& a) -> float{ return a+0.1;}, resource1);
@@ -52,15 +54,17 @@ int main_pipe(){
     set_log_level(DEBUG);
     BMPipeline<int, int> pipeline{};
     std::function<float(const int&)> func = [](int a){  return a+1.0; };
-    std::function<void(const float& a, int& b)> func1 = [](const float& a, int& b){
+    std::function<bool(const float& a, int& b)> func1 = [](const float& a, int& b){
         sleep(1);
 //        std::this_thread::sleep_for(chrono::seconds(1));
         b = (int)a*1.8;
+        return true;
     };
 
-    std::function<void(const int& a, int& b)> func2 = [](const int& a, int& b){
+    std::function<bool(const int& a, int& b)> func2 = [](const int& a, int& b){
         sleep(1);
         b = a*2;
+        return true;
     };
 
     vector<float> resource1{1,2,3};

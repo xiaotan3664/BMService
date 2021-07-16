@@ -29,7 +29,7 @@ class BMPipelineNodeImp: public Uncopiable, public BMPipelineNodeBase {
 private:
     using InQueuePtr=std::shared_ptr<BMQueue<InType>>;
     using OutQueuePtr=std::shared_ptr<BMQueue<OutType>>;
-    using TaskType =  std::function<void (const InType&, OutType&, std::shared_ptr<ContextType>)>;
+    using TaskType =  std::function<bool (const InType&, OutType&, std::shared_ptr<ContextType>)>;
 
     std::shared_ptr<ContextType> context;
     TaskType taskFunc;
@@ -56,27 +56,32 @@ private:
                 }
                 std::this_thread::yield();
             }
-            while(!done) {
-                if(inTaskQueue->tryPop(in)) {
-                    BMLOG(DEBUG, "[%d] got a task", std::this_thread::get_id());
-                    break;
+            bool finish = false;
+            while(!finish){
+                while(!done) {
+                    if(inTaskQueue->tryPop(in)) {
+                        BMLOG(DEBUG, "[%d] got a task", std::this_thread::get_id());
+                        break;
+                    }
+                    std::this_thread::yield();
                 }
-                std::this_thread::yield();
+                try {
+                    if(!done){
+                        finish = taskFunc(in, out, context);
+                    }
+                } catch(...){
+                    done = true;
+                }
+                if(inFreeQueue) {
+                    BMLOG(DEBUG, "[%d] return an input resource", std::this_thread::get_id());
+                    inFreeQueue->push(in);
+                }
             }
-            try {
-                if(!done){
-                    taskFunc(in, out, context);
-                    if(inFreeQueue) {
-                        BMLOG(DEBUG, "[%d] return an input resource", std::this_thread::get_id());
-                        inFreeQueue->push(in);
-                    }
-                    if(outTaskQueue) {
-                        BMLOG(DEBUG, "[%d] put a task", std::this_thread::get_id());
-                        outTaskQueue->push(out);
-                    }
+            if(!done){
+                if(outTaskQueue) {
+                    BMLOG(DEBUG, "[%d] put a task", std::this_thread::get_id());
+                    outTaskQueue->push(out);
                 }
-            } catch(...){
-                done = true;
             }
         }
         BMLOG(DEBUG, "[%d] leave thread", std::this_thread::get_id());
@@ -164,29 +169,35 @@ public:
     template<typename NodeInType, typename NodeOutType, typename Container = std::vector<NodeOutType>>
     void addNode(std::function<NodeOutType(const NodeInType&, std::shared_ptr<ContextType>)> func,
                  Container outResource = {}) {
-        std::function<void (const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
-                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType> ctx){ out =  std::move(func(in, ctx)); };
+        std::function<bool(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
+                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType> ctx){
+            out =  std::move(func(in, ctx));
+            return true;
+        };
         addNode(inner_func, outResource);
     }
 
     template<typename NodeInType, typename NodeOutType, typename Container = std::vector<NodeOutType>>
     void addNode(std::function<NodeOutType(const NodeInType&)> func,
                  Container outResource = {}) {
-        std::function<void(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
-                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType>){ out =  std::move(func(in)); };
+        std::function<bool(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
+                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType>){
+            out =  std::move(func(in));
+            return true;
+        };
         addNode(inner_func, outResource);
     }
 
     template<typename NodeInType, typename NodeOutType, typename Container = std::vector<NodeOutType>>
-    void addNode(std::function<void(const NodeInType&, NodeOutType&)> func,
+    void addNode(std::function<bool(const NodeInType&, NodeOutType&)> func,
                  Container outResource = {}) {
-        std::function<void(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
-                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType>){ func(in, out); };
+        std::function<bool(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
+                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType>){ return func(in, out); };
         addNode(inner_func, outResource);
     }
 
     template<typename NodeInType, typename NodeOutType, typename Container= std::vector<NodeOutType>>
-    void addNode(std::function<void(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> func,
+    void addNode(std::function<bool(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> func,
                  Container outResource = {}) {
         auto inWorkQueue = std::dynamic_pointer_cast<BMQueue<NodeInType>>(lastOutWorkQueue);
         if(!inWorkQueue) {
@@ -290,8 +301,11 @@ public:
     template<typename NodeInType, typename NodeOutType, typename Container = std::vector<NodeOutType>>
     void addNode(std::function<NodeOutType(const NodeInType&)> func,
                  std::function<Container(std::shared_ptr<ContextType>)> outResourceInitializer = nullptr) {
-        std::function<void(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
-                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType>){ out =  std::move(func(in)); };
+        std::function<bool(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
+                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType>){
+            out =  std::move(func(in));
+            return true;
+        };
         addNode(inner_func, outResourceInitializer);
     }
 
@@ -304,15 +318,15 @@ public:
     }
 
     template<typename NodeInType, typename NodeOutType, typename Container=std::vector<NodeOutType>>
-    void addNode(std::function<void(const NodeInType&, NodeOutType&)> func,
+    void addNode(std::function<bool(const NodeInType&, NodeOutType&)> func,
                  std::function<Container(std::shared_ptr<ContextType>)> outResourceInitializer = nullptr) {
-        std::function<void(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
-                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType>){ func(in, out); };
+        std::function<bool(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> inner_func = [func](
+                const NodeInType& in, NodeOutType& out, std::shared_ptr<ContextType>){ return func(in, out); };
         addNode(inner_func, outResourceInitializer);
     }
 
     template<typename NodeInType, typename NodeOutType, typename Container=std::vector<NodeOutType>>
-    void addNode(std::function<void(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> func,
+    void addNode(std::function<bool(const NodeInType&, NodeOutType&, std::shared_ptr<ContextType>)> func,
                  std::function<Container(std::shared_ptr<ContextType>)> outResourceInitializer = nullptr
                  ) {
        for(size_t i=0; i<pipelines.size(); i++){

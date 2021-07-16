@@ -88,7 +88,7 @@ public:
     }
 
     bool canPush() {
-        return  max_nodes!=0 && num_nodes<max_nodes;
+        return  max_nodes==0 || num_nodes<max_nodes;
     }
 
     void setMaxNode(size_t max){
@@ -99,7 +99,7 @@ public:
         std::shared_ptr<T> new_data(
                     std::make_shared<T>(std::move(new_value)));
         std::unique_ptr<Node> new_node(new Node);
-
+        while(!canPush()) std::this_thread::yield();
         {
             LOCK(tail);
             tail->data = new_data;
