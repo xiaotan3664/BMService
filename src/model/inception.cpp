@@ -1,7 +1,7 @@
 #include <dirent.h>
 #include "inception.h"
 
-namespace bm {
+using namespace bm;
 using InType = std::vector<std::string>;
 using ClassId = size_t;
 
@@ -181,6 +181,3 @@ bool Inception::postProcess(const Inception::ForwardOutType &in, Inception::Post
 
 }
 */
-
-
-}

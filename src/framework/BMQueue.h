@@ -28,7 +28,7 @@ private:
     std::mutex tail_mutex;
     Node* tail;
     size_t max_nodes;
-    std::atomic_uint32_t num_nodes;
+    std::atomic<size_t> num_nodes;
     std::condition_variable data_cond;
     Node* getTail(){
         LOCK(tail);

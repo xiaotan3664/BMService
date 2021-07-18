@@ -57,7 +57,7 @@ private:
                 std::this_thread::yield();
             }
             bool finish = false;
-            while(!finish){
+            while(!done && !finish){
                 while(!done) {
                     if(inTaskQueue->tryPop(in)) {
                         BMLOG(DEBUG, "[%d] got a task", std::this_thread::get_id());
@@ -68,13 +68,15 @@ private:
                 try {
                     if(!done){
                         finish = taskFunc(in, out, context);
+                        if(inFreeQueue) {
+                            BMLOG(DEBUG, "[%d] return an input resource", std::this_thread::get_id());
+                            inFreeQueue->push(in);
+                        }
+                    } else {
+                        break;
                     }
                 } catch(...){
                     done = true;
-                }
-                if(inFreeQueue) {
-                    BMLOG(DEBUG, "[%d] return an input resource", std::this_thread::get_id());
-                    inFreeQueue->push(in);
                 }
             }
             if(!done){
