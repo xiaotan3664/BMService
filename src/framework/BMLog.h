@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <type_traits>
 #include <stdexcept>
+#include <thread>
 
 namespace bm {
 
@@ -34,7 +35,7 @@ typename std::enable_if<level==FATAL , void>::type __bm_log(const char* fmt, Arg
 }
 
 #define BMLOG(severity, fmt, ...) \
-    __bm_log<LogLevel::severity>("[%s:%d] %s: " fmt "\n", __FILE__, __LINE__, #severity, ##__VA_ARGS__)
+    __bm_log<LogLevel::severity>("[tid=%x] %s: " fmt "\n", std::this_thread::get_id(), #severity, ##__VA_ARGS__)
 
 };
 

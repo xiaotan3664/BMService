@@ -4,6 +4,8 @@
 #include <functional>
 #include <algorithm>
 #include <exception>
+#include <opencv2/opencv.hpp>
+#include <chrono>
 #include "BMDeviceUtils.h"
 #include "BMPipelinePool.h"
 #include "BMNetwork.h"
@@ -16,6 +18,8 @@ class BMDeviceContext {
 
 private:
     std::vector<bm_device_mem_t> mem_to_free;
+    std::vector<std::vector<bm_image>> images_to_free;
+    std::vector<bm_image> info_to_free;
 
 public:
     DeviceId deviceId;
@@ -24,87 +28,71 @@ public:
     std::shared_ptr<BMNetwork> net;
     size_t batchSize;
 
+    BMDeviceContext(DeviceId deviceId, const std::string& bmodel);
+
     std::shared_ptr<BMNetwork> getNetwork() { return net; }
+    size_t getBatchSize(){ return batchSize; }
 
-    BMDeviceContext(DeviceId deviceId, const std::string& bmodel):deviceId(deviceId), batchSize(batchSize) {
-        batchSize = -1;
-        auto status = bm_dev_request(&handle, deviceId);
-        BM_ASSERT_EQ(status, BM_SUCCESS);
-        pBMRuntime = bmrt_create(handle);
-        BM_ASSERT(pBMRuntime != nullptr, "cannot create bmruntime handle");
-        net = std::make_shared<BMNetwork>(pBMRuntime, bmodel);
-        batchSize = net->getBatchSize();
-    }
 
-    bm_device_mem_t allocDeviceMem(size_t bytes) {
-        bm_device_mem_t mem;
-        if(bm_malloc_device_byte(handle, &mem, bytes) != BM_SUCCESS){
-            BMLOG(FATAL, "cannot alloc device mem, size=%d", bytes);
-        }
-        mem_to_free.push_back(mem);
-        return mem;
-    }
+    bm_device_mem_t allocDeviceMem(size_t bytes);
 
-    void freeDeviceMem(bm_device_mem_t& mem){
-        auto iter = std::find_if(mem_to_free.begin(), mem_to_free.end(), [&mem](bm_device_mem_t& m){
-            return bm_mem_get_device_addr(m) ==  bm_mem_get_device_addr(mem);
-        });
-        BM_ASSERT(iter != mem_to_free.end(), "cannot free mem!");
-        bm_free_device(handle, mem);
-        mem_to_free.erase(iter);
-    }
+    void freeDeviceMem(bm_device_mem_t& mem);
 
-    size_t getBatchSize(){
-        return batchSize;
-    }
+    void allocMemForTensor(TensorPtr tensor);
+    std::vector<bm_image> allocImagesWithoutMem(
+            int num,
+            int height,
+            int width,
+            bm_image_format_ext format,
+            bm_image_data_format_ext dtype, int align_bytes = 1);
 
-    void allocMemForTensor(TensorPtr tensor){
-        auto mem_size = tensor->get_mem_size();
-        auto mem = allocDeviceMem(mem_size);
-        tensor->set_device_mem(&mem);
-    }
+    std::vector<bm_image> allocImages(int num, int height, int width,
+                        bm_image_format_ext format,
+                        bm_image_data_format_ext dtype,
+                        int align_bytes = 1,
+                        int heap_id = BMCV_HEAP_ANY);
 
-//    bm_image_t allocImage();
-//    void freeImage(bm_image_t& image);
-    ~BMDeviceContext() {
-        auto mems = mem_to_free;
-        for(auto m : mems){
-            freeDeviceMem(m);
-        }
-        bmrt_destroy(pBMRuntime);
-        bm_dev_free(handle);
-    }
+    std::vector<bm_image> allocAlignedImages(
+            int num,
+            int height, int width,
+            bm_image_format_ext format,
+            bm_image_data_format_ext dtype,
+            int heap_id = BMCV_HEAP_ANY);
+
+    void freeImages(std::vector<bm_image>& ref_images);
+    ~BMDeviceContext();
 };
 
 using ContextPtr = typename std::shared_ptr<BMDeviceContext>;
 
-template<typename InType_, typename OutType_>
+struct ProcessStatus {
+
+};
+
+template<typename InType, typename OutType>
 class BMDevicePool {
 public:
-    using InType = InType_;
-    using OutType = OutType_;
     using ContextType = BMDeviceContext;
-    using PoolType = BMPipelinePool<InType, OutType, ContextType>;
-    using PoolPtr = std::shared_ptr<PoolType>;
 
-    struct PreOutType {
+    struct _PreOutType {
         bool valid;
         InType in;
         TensorVec preOut;
     };
 
-    struct ForwardOutType {
+    struct _ForwardOutType {
         bool valid;
         InType in;
         TensorVec forwardOut;
     };
 
-    struct PostOutType {
+    struct _PostOutType {
         InType in;
         OutType out;
     };
 
-    using RunnerType = BMDevicePool<InType, PostOutType>;
+    using RunnerType = BMPipelinePool<InType, _PostOutType, BMDeviceContext>;
+    using RunnerPtr = std::shared_ptr<RunnerType>;
     using PreProcessFunc = std::function<bool(const InType&, const TensorVec&, ContextPtr)>;
     using PostProcessFunc = std::function<bool(const InType&, const TensorVec&, OutType&, ContextPtr)>;
     std::atomic_size_t atomicBatchSize;
@@ -124,26 +112,26 @@ public:
             return context;
         };
 
-        pool = std::make_shared<PoolType>(deviceNum, contextInitializer);
+        pool = std::make_shared<RunnerType>(deviceNum, contextInitializer);
 
         auto inQueue = pool->getInputQueue();
         inQueue->setMaxNode(deviceNum*4);
 
         PreProcessFunc preCoreFunc = preProcessFunc;
         PostProcessFunc postCoreFunc = postProcessFunc;
-        std::function<bool(const InType&, PreOutType&, ContextPtr ctx)> preFunc =
-                [preCoreFunc] (const InType& in, PreOutType& out, ContextPtr ctx){
+        std::function<bool(const InType&, _PreOutType&, ContextPtr ctx)> preFunc =
+                [preCoreFunc] (const InType& in, _PreOutType& out, ContextPtr ctx){
             return preProcess(in, out, ctx, preCoreFunc);
         };
-        std::function<std::vector<PreOutType>(ContextPtr)> preCreateFunc = createPreProcessOutput;
+        std::function<std::vector<_PreOutType>(ContextPtr)> preCreateFunc = createPreProcessOutput;
         pool->addNode(preFunc, preCreateFunc);
 
-        std::function<bool(const PreOutType&, ForwardOutType&, ContextPtr)> forwardFunc = forward;
-        std::function<std::vector<ForwardOutType>(ContextPtr)> createForwardFunc = createForwardOutput;
+        std::function<bool(const _PreOutType&, _ForwardOutType&, ContextPtr)> forwardFunc = forward;
+        std::function<std::vector<_ForwardOutType>(ContextPtr)> createForwardFunc = createForwardOutput;
         pool->addNode(forwardFunc, createForwardFunc);
 
-        std::function<bool(const ForwardOutType&, PostOutType&, ContextPtr)> postFunc =
-                [postCoreFunc] (const ForwardOutType& in, PostOutType& out, ContextPtr ctx){
+        std::function<bool(const _ForwardOutType&, _PostOutType&, ContextPtr)> postFunc =
+                [postCoreFunc] (const _ForwardOutType& in, _PostOutType& out, ContextPtr ctx){
             return postProcess(in, out, ctx, postCoreFunc);
         };
         pool->addNode(postFunc);
@@ -166,20 +154,23 @@ public:
     }
 
     bool pop(OutType& out){
-        return pool->pop(out);
+        _PostOutType postOut;
+        bool res = pool->pop(postOut);
+        out = postOut.out;
+	return res;
     }
 
-    static bool preProcess(const InType& in, PreOutType& out, ContextPtr ctx, PreProcessFunc preCoreFunc) {
+    static bool preProcess(const InType& in, _PreOutType& out, ContextPtr ctx, PreProcessFunc preCoreFunc) {
         out.in = in;
         out.valid = preCoreFunc(in, out.preOut, ctx);
         return true;
     }
 
-    static std::vector<PreOutType> createPreProcessOutput(ContextPtr ctx) {
+    static std::vector<_PreOutType> createPreProcessOutput(ContextPtr ctx) {
         auto net = ctx->net;
-        std::vector<PreOutType> preOuts;
+        std::vector<_PreOutType> preOuts;
         for(size_t i=0; i<2; i++){
-            PreOutType preOut;
+            _PreOutType preOut;
             preOut.preOut = net->createInputTensors();
             for(auto tensor: preOut.preOut){
                 ctx->allocMemForTensor(tensor);
@@ -189,7 +180,7 @@ public:
         return preOuts;
     }
 
-    static bool forward(const PreOutType& in, ForwardOutType& out, ContextPtr ctx) {
+    static bool forward(const _PreOutType& in, _ForwardOutType& out, ContextPtr ctx) {
         out.in = in.in;
         out.valid = false;
         if(in.valid){
@@ -198,11 +189,11 @@ public:
         return true;
     }
 
-    static std::vector<ForwardOutType> createForwardOutput(ContextPtr ctx) {
+    static std::vector<_ForwardOutType> createForwardOutput(ContextPtr ctx) {
         auto net = ctx->net;
-        std::vector<ForwardOutType> forwardOuts;
+        std::vector<_ForwardOutType> forwardOuts;
         for(size_t i=0; i<2; i++){
-            ForwardOutType forwardOut;
+            _ForwardOutType forwardOut;
             forwardOut.forwardOut = net->createOutputTensors();
             for(auto tensor: forwardOut.forwardOut){
                 ctx->allocMemForTensor(tensor);
@@ -212,7 +203,7 @@ public:
         return forwardOuts;
     }
 
-    static bool postProcess(const ForwardOutType& in, PostOutType& out, ContextPtr ctx, PostProcessFunc postCoreFunc) {
+    static bool postProcess(const _ForwardOutType& in, _PostOutType& out, ContextPtr ctx, PostProcessFunc postCoreFunc) {
         return postCoreFunc(in.in, in.forwardOut, out.out, ctx);
     }
 
@@ -220,7 +211,7 @@ public:
         return atomicBatchSize.load();
     }
 private:
-    PoolPtr pool;
+    RunnerPtr pool;
 };
 
 }

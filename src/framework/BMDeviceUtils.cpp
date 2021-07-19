@@ -76,12 +76,14 @@ void forEachBatch(const std::string &path, size_t batchSize, std::function<void 
             batchPaths.push_back(fullpath);
             if(batchSize == batchPaths.size()) {
                 func(std::move(batchPaths));
+		batchPaths.clear();
             }
         }
     }
 
     if(!batchPaths.empty()){
         func(std::move(batchPaths));
+	batchPaths.clear();
     }
 
     closedir(d);

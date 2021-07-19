@@ -13,7 +13,7 @@ namespace bm {
 class BMTensor{
 public:
     BMTensor(bm_handle_t handle, const char *name, float scale, bm_tensor_t* tensor, bool relase):
-        m_handle(handle), m_name(name), m_cpu_data(nullptr), m_scale(scale), m_tensor(tensor), need_release(relase) {
+        m_handle(handle), m_name(name), m_raw_data(nullptr), m_float_data(nullptr), m_scale(scale), m_tensor(tensor), need_release(relase) {
     }
 
     void set_device_mem(bm_device_mem_t *mem) { this->m_tensor->device_mem = *mem; }
@@ -23,19 +23,27 @@ public:
     bm_store_mode_t get_store_mode() const { return m_tensor->st_mode; };
     const bm_shape_t* get_shape() const { return &m_tensor->shape; }
     bm_data_type_t get_dtype() const { return m_tensor->dtype; }
+    size_t shape(int dim) const {
+        while(dim<0) dim+=m_tensor->shape.num_dims;
+        return dim<m_tensor->shape.num_dims? m_tensor->shape.dims[dim]:1; }
+    size_t dims() const { return m_tensor->shape.num_dims; }
     float get_scale() const { return m_scale; }
 
     size_t get_mem_size() const;
+    size_t get_elem_num() const;
 
     bm_tensor_t* raw_tensor() { return m_tensor; }
-    float *get_cpu_data();
+    unsigned char* get_raw_data();
+    float *get_float_data();
 
     virtual ~BMTensor();
+    void dumpData(const char* name);
 
 private:
     bm_handle_t  m_handle;
     std::string m_name;
-    float* m_cpu_data;
+    unsigned char* m_raw_data;
+    float* m_float_data;
     float m_scale;
     bool need_release;
     bm_tensor_t *m_tensor;
@@ -50,6 +58,7 @@ class BMNetwork : public Uncopiable {
     std::string bmodelPath;
     void *m_bmrt;
     size_t batchSize;
+    std::vector<std::string> m_network_names;
 
 public:
     BMNetwork(void *bmrt, const std::string& name);

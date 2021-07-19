@@ -1,13 +1,26 @@
+#include <stdio.h>
 #include "BMNetwork.h"
 namespace bm {
 
 BMNetwork::BMNetwork(void *bmrt, const std::string &name): m_bmrt(bmrt), bmodelPath(name) {
     m_handle = static_cast<bm_handle_t>(bmrt_get_bm_handle(bmrt));
-    m_netinfo = bmrt_get_network_info(bmrt, name.c_str());
-    assert(m_netinfo->stage_num == 1);
+    if (!bmrt_load_bmodel(m_bmrt, bmodelPath.c_str())) {
+        BMLOG(FATAL, "load bmodel(%s) failed!", bmodelPath.c_str());
+    }
+    const char **names;
+    int num;
+    num = bmrt_get_network_number(m_bmrt);
+    bmrt_get_network_names(m_bmrt, &names);
+    for(int i=0;i < num; ++i) {
+        m_network_names.push_back(names[i]);
+    }
+    free(names);
 
-    batchSize = 0;
-    if(!m_netinfo->input_num){
+    auto net_name = m_network_names[0];
+    m_netinfo = bmrt_get_network_info(bmrt, net_name.c_str());
+    assert(m_netinfo->stage_num == 1);
+    batchSize = 1;
+    if(m_netinfo->input_num>0){
         batchSize = m_netinfo->stages[0].input_shapes[0].dims[0];
     }
 }
@@ -78,10 +91,18 @@ BMTensor::~BMTensor() {
     if (need_release){
         delete [] m_tensor;
     }
-    if (m_cpu_data != NULL) {
-        delete [] m_cpu_data;
-        m_cpu_data = NULL;
+    if (m_raw_data != NULL) {
+        delete [] m_raw_data;
+        m_raw_data = NULL;
     }
+    if (m_float_data != NULL) {
+        delete [] m_float_data;
+        m_float_data = NULL;
+    }
+}
+
+size_t BMTensor::get_elem_num() const {
+	return bmrt_shape_count(&m_tensor->shape);
 }
 
 size_t BMTensor::get_mem_size() const
@@ -101,36 +122,53 @@ size_t BMTensor::get_mem_size() const
     return count;
 }
 
-float *BMTensor::get_cpu_data() {
-    if (m_cpu_data == NULL) {
-        bm_status_t ret;
-        float *pFP32 = nullptr;
-        int count = bmrt_shape_count(&m_tensor->shape);
+unsigned char *BMTensor::get_raw_data() {
+    auto bytes = get_mem_size();
+    if (m_raw_data == NULL) {
+        m_raw_data = new unsigned char[bytes];
+    }
+    bm_status_t ret = bm_memcpy_d2s_partial(m_handle, m_raw_data, m_tensor->device_mem, bytes);
+    BM_ASSERT_EQ(ret, BM_SUCCESS);
+    return m_raw_data;
+}
+
+float *BMTensor::get_float_data() {
         if (m_tensor->dtype == BM_FLOAT32) {
-            pFP32 = new float[count];
-            assert(pFP32 != nullptr);
-            ret = bm_memcpy_d2s_partial(m_handle, pFP32, m_tensor->device_mem, count * sizeof(float));
-            assert(BM_SUCCESS ==ret);
-        }else if (BM_INT8 == m_tensor->dtype) {
-            int tensor_size = bmrt_tensor_bytesize(m_tensor);
-            int8_t *pU8 = new int8_t[tensor_size];
-            assert(pU8 != nullptr);
-            pFP32 = new float[count];
-            assert(pFP32 != nullptr);
-            ret = bm_memcpy_d2s_partial(m_handle, pU8, m_tensor->device_mem, tensor_size);
-            assert(BM_SUCCESS ==ret);
-            for(int i = 0;i < count; ++ i) {
-                pFP32[i] = pU8[i] * m_scale;
+            return (float*)get_raw_data();
+        }else if (BM_INT8 == m_tensor->dtype || BM_UINT8 == m_tensor->dtype) {
+            size_t elem_num = get_elem_num();
+            if (m_float_data == nullptr){
+               m_float_data = new float[elem_num];
             }
-            delete [] pU8;
+            get_raw_data();
+            if(BM_INT8 == m_tensor->dtype){
+		    auto int8_data = (int8_t*)m_raw_data;
+		    for(size_t i = 0;i < elem_num; ++ i) {
+			m_float_data[i] = int8_data[i] * m_scale;
+		    }
+            } else {
+		    auto uint8_data = (uint8_t*)m_raw_data;
+		    for(size_t i = 0;i < elem_num; ++ i) {
+			m_float_data[i] = uint8_data[i] * m_scale;
+		    }
+            }
         }else{
             BMLOG(FATAL, "NOT support dtype=%d", m_tensor->dtype);
         }
+	return m_float_data;
+}
 
-        m_cpu_data = pFP32;
-    }
+void BMTensor::dumpData(const char* filename) {
+	if (m_tensor->dtype == BM_FLOAT32) {
+float* data = get_float_data();
+size_t elem_num = get_elem_num();
+auto fp = fopen(filename, "w");
+for(size_t i=0; i<elem_num; i++){
+fprintf(fp, "%f\n", data[i]);
+}
+fclose(fp);
 
-    return m_cpu_data;
+}
 }
 
 }
