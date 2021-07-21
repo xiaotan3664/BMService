@@ -84,7 +84,7 @@ int BMNetwork::forward(TensorVec inTensors, TensorVec outTensors) {
     }
 #endif
 
-    return 0;
+    return ok;
 }
 
 BMTensor::~BMTensor() {

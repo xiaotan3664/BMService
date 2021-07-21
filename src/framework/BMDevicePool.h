@@ -66,7 +66,35 @@ public:
 using ContextPtr = typename std::shared_ptr<BMDeviceContext>;
 
 struct ProcessStatus {
-
+    DeviceId deviceId;
+    bool valid;
+    std::vector<std::chrono::steady_clock::time_point> starts;
+    std::vector<std::chrono::steady_clock::time_point> ends;
+    void reset(){
+        starts.clear();
+        ends.clear();
+        valid = false;
+    }
+    void start(){
+        starts.push_back(std::chrono::steady_clock::now());
+    }
+    void end(){
+        ends.push_back(std::chrono::steady_clock::now());
+    }
+    void show() {
+        BMLOG(INFO, "device_id=%d, valid=%d", deviceId, valid);
+        const char* phaseMap[]={
+            "PRE-PROCESS",
+            "FOWARD",
+            "POST-PROCESS"
+        };
+        for(size_t i=0; i<starts.size(); i++){
+            auto startStr = steadyToString(starts[i]);
+            auto endStr = steadyToString(ends[i]);
+            BMLOG(INFO, "  -> %s: start=%s, end=%s",
+                  phaseMap[i], startStr.c_str(), endStr.c_str());
+        }
+    }
 };
 
 template<typename InType, typename OutType>
@@ -75,20 +103,21 @@ public:
     using ContextType = BMDeviceContext;
 
     struct _PreOutType {
-        bool valid;
         InType in;
         TensorVec preOut;
+        std::shared_ptr<ProcessStatus> status;
     };
 
     struct _ForwardOutType {
-        bool valid;
         InType in;
         TensorVec forwardOut;
+        std::shared_ptr<ProcessStatus> status;
     };
 
     struct _PostOutType {
         InType in;
         OutType out;
+        std::shared_ptr<ProcessStatus> status;
     };
 
     using RunnerType = BMPipelinePool<InType, _PostOutType, BMDeviceContext>;
@@ -153,16 +182,23 @@ public:
         pool->push(in);
     }
 
-    bool pop(OutType& out){
+    bool pop(OutType& out, std::shared_ptr<ProcessStatus>& status){
         _PostOutType postOut;
         bool res = pool->pop(postOut);
-        out = postOut.out;
-	return res;
+        if(res){
+            status = postOut.status;
+            out = postOut.out;
+        }
+        return res;
     }
 
     static bool preProcess(const InType& in, _PreOutType& out, ContextPtr ctx, PreProcessFunc preCoreFunc) {
+        out.status = std::make_shared<ProcessStatus>();
+        out.status->deviceId = ctx->deviceId;
+        out.status->start();
         out.in = in;
-        out.valid = preCoreFunc(in, out.preOut, ctx);
+        out.status->valid = preCoreFunc(in, out.preOut, ctx);
+        out.status->end();
         return true;
     }
 
@@ -181,10 +217,12 @@ public:
     }
 
     static bool forward(const _PreOutType& in, _ForwardOutType& out, ContextPtr ctx) {
+        out.status = std::move(in.status);
         out.in = in.in;
-        out.valid = false;
-        if(in.valid){
-            out.valid = ctx->net->forward(in.preOut, out.forwardOut);
+        if(out.status->valid){
+            out.status->start();
+            out.status->valid = ctx->net->forward(in.preOut, out.forwardOut);
+            out.status->end();
         }
         return true;
     }
@@ -204,7 +242,13 @@ public:
     }
 
     static bool postProcess(const _ForwardOutType& in, _PostOutType& out, ContextPtr ctx, PostProcessFunc postCoreFunc) {
-        return postCoreFunc(in.in, in.forwardOut, out.out, ctx);
+        out.status = std::move(in.status);
+        if(out.status->valid){
+            out.status->start();
+            out.status->valid = postCoreFunc(in.in, in.forwardOut, out.out, ctx);
+            out.status->end();
+        }
+        return true;
     }
 
     size_t getBatchSize(){

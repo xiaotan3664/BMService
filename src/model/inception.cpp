@@ -39,19 +39,22 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
     //            netBatch, netHeight, netWidth, netFormat, netDtype);
     thread_local static std::vector<bm_image> preOutImages;
     if(preOutImages.empty()){
-        ctx->allocImagesWithoutMem(
+        preOutImages = ctx->allocImagesWithoutMem(
                     netBatch, netHeight, netWidth*3, FORMAT_GRAY, netDtype);
-        auto mem = inTensor->get_device_mem();
-        bm_image_attach_contiguous_mem(in.size(), preOutImages.data(), *mem);
     }
+    auto mem = inTensor->get_device_mem();
+    bm_image_attach_contiguous_mem(in.size(), preOutImages.data(), *mem);
     //BMLOG(INFO, "addr=%llx", bm_mem_get_device_addr(*mem));
 
     // use static to cache resizedImage, to avoid allocating memory everytime
-    thread_local static std::vector<bm_image> resizedImages = ctx->allocAlignedImages(
-                netBatch, netHeight, netWidth, netFormat, alignedInputs[0].data_type);
+    thread_local static std::vector<bm_image> resizedImages;
+    if (resizedImages.empty()){
+			resizedImages = ctx->allocAlignedImages(
+									netBatch, netHeight, netWidth, netFormat, alignedInputs[0].data_type);
+	  }
 
     // bmcv_image_convert_to do not support RGB_PACKED format directly
-    static std::vector<bm_image> grayImages; 
+    thread_local static std::vector<bm_image> grayImages;
     if(grayImages.empty()){ // run once
 	    grayImages = ctx->allocImagesWithoutMem(
 			    netBatch, netHeight, netWidth*3, FORMAT_GRAY, alignedInputs[0].data_type, 64);
@@ -108,7 +111,7 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
     return true;
 }
 
-bool resultProcess(const PostOutType& out, std::map<size_t, std::string> labelMap){
+bool resultProcess(const PostOutType& out, std::map<size_t, std::string>& labelMap){
     if(out.rawIns.empty()) return false;
     BM_ASSERT_EQ(out.rawIns.size(), out.classes.size());
     for(size_t i=0; i<out.rawIns.size(); i++){
@@ -120,11 +123,13 @@ bool resultProcess(const PostOutType& out, std::map<size_t, std::string> labelMa
 
 int main(int argc, char* argv[]){
     set_log_level(INFO);
+    TimeRecorder recorder("inception");
     std::string dataPath = "../dataset";
     std::string bmodel = "../compilation/compilation.bmodel";
-    std::string labelFile = "../inception_label.txt";
+    std::string labelFile = "../inception_labels.txt";
     if(argc>1) dataPath = argv[1];
     if(argc>2) bmodel = argv[2];
+    if(argc>3) labelFile = argv[2];
     BMDevicePool<InType, PostOutType> runner(bmodel, preProcess, postProcess);
     runner.start();
     size_t batchSize= runner.getBatchSize();
@@ -138,12 +143,14 @@ int main(int argc, char* argv[]){
         });
         runner.push({});
     });
-    std::thread resultThread([&runner](){
+    std::thread resultThread([&runner, &labelMap](){
         PostOutType out;
+        std::shared_ptr<ProcessStatus> status;
         while(true){
-            while(!runner.pop(out)) {
+            while(!runner.pop(out, status)) {
                 std::this_thread::yield();
             }
+            status->show();
             if(!resultProcess(out, labelMap)){
                 runner.stop();
                 break;

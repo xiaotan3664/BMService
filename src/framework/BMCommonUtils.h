@@ -4,6 +4,7 @@
 #include <set>
 #include <string>
 #include <sstream>
+#include <chrono>
 
 namespace bm {
 
@@ -13,6 +14,22 @@ class Uncopiable {
     Uncopiable(Uncopiable&) = delete;
     Uncopiable(const Uncopiable&) = delete;
     Uncopiable& operator = (const Uncopiable) = delete;
+};
+
+std::string steadyToString(std::chrono::steady_clock::time_point& tp);
+
+using TimerClock = std::chrono::steady_clock;
+size_t msBetween(
+        std::chrono::steady_clock::time_point& start,
+        std::chrono::steady_clock::time_point& stop);
+
+class TimeRecorder{
+private:
+    std::chrono::time_point<TimerClock> start;
+    std::string name;
+public:
+    TimeRecorder(const std::string& name);
+    ~TimeRecorder();
 };
 
 template <typename T>
