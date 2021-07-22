@@ -25,8 +25,48 @@ BMNetwork::BMNetwork(void *bmrt, const std::string &name): m_bmrt(bmrt), bmodelP
     }
 }
 
+static std::string shape_to_str(const bm_shape_t& shape) {
+    std::string str ="[ ";
+    for(int i=0; i<shape.num_dims; i++){
+        str += std::to_string(shape.dims[i]) + " ";
+    }
+    str += "]";
+    return str;
+}
+
 void BMNetwork::showInfo()
 {
+    const char* dtypeMap[] = {
+        "FLOAT32",
+        "FLOAT16",
+        "INT8",
+        "UINT8",
+        "INT16",
+        "UINT16",
+        "INT32",
+        "UINT32",
+    };
+    BMLOG(INFO, "NetName: %s", m_netinfo->name);
+    BMLOG(INFO, "Inputs:");
+    for(int i=0; i<m_netinfo->input_num; i++){
+        auto shapeStr = shape_to_str(m_netinfo->stages[0].input_shapes[i]);
+        BMLOG(INFO, "  %d) '%s' shape=%s dtype=%s scale=%g",
+              i,
+              m_netinfo->input_names[i],
+              shapeStr.c_str(),
+              dtypeMap[m_netinfo->input_dtypes[i]],
+              m_netinfo->input_scales[i]);
+    }
+    BMLOG(INFO, "Outputs:");
+    for(int i=0; i<m_netinfo->output_num; i++){
+        auto shapeStr = shape_to_str(m_netinfo->stages[0].output_shapes[i]);
+        BMLOG(INFO, "  %d) '%s' shape=%s dtype=%s scale=%g",
+              i,
+              m_netinfo->output_names[i],
+              shapeStr.c_str(),
+              dtypeMap[m_netinfo->output_dtypes[i]],
+              m_netinfo->output_scales[i]);
+    }
 
 }
 

@@ -3,6 +3,12 @@
 
 namespace bm {
 
+const char* __phaseMap[]={
+    "PRE-PROCESS",
+    "FOWARD",
+    "POST-PROCESS"
+};
+
 BMDeviceContext::BMDeviceContext(DeviceId deviceId, const std::string &bmodel):deviceId(deviceId), batchSize(batchSize) {
     batchSize = -1;
     auto status = bm_dev_request(&handle, deviceId);

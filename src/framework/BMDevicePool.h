@@ -14,6 +14,7 @@
 
 namespace bm {
 
+extern const char* __phaseMap[];
 class BMDeviceContext {
 
 private:
@@ -77,23 +78,68 @@ struct ProcessStatus {
     }
     void start(){
         starts.push_back(std::chrono::steady_clock::now());
+        ends.push_back(starts.back());
     }
     void end(){
-        ends.push_back(std::chrono::steady_clock::now());
+        ends.back() = std::chrono::steady_clock::now();
     }
     void show() {
-        BMLOG(INFO, "device_id=%d, valid=%d", deviceId, valid);
-        const char* phaseMap[]={
-            "PRE-PROCESS",
-            "FOWARD",
-            "POST-PROCESS"
-        };
+        BMLOG(INFO, "device_id=%d, valid=%d, total=%dus", deviceId, valid, totalDuration());
         for(size_t i=0; i<starts.size(); i++){
             auto startStr = steadyToString(starts[i]);
             auto endStr = steadyToString(ends[i]);
-            BMLOG(INFO, "  -> %s: start=%s, end=%s",
-                  phaseMap[i], startStr.c_str(), endStr.c_str());
+            BMLOG(INFO, "  -> %s: duration=%dus",
+                  __phaseMap[i],
+                  usBetween(starts[i], ends[i]),
+                  startStr.c_str(), endStr.c_str());
         }
+    }
+    size_t totalDuration() const {
+        return usBetween(starts.front(), ends.back());
+    }
+
+    void increaseDuration(std::vector<size_t>& durations) {
+    }
+};
+
+struct StatInfo {
+    size_t totalDuration = 0;
+    size_t numSamples = 0;
+    std::map<size_t, size_t> deviceProcessNum;
+    std::vector<size_t> durations;
+    std::string name;
+    std::chrono::steady_clock::time_point start;
+    StatInfo(const std::string& name): name(name), start(std::chrono::steady_clock::now()){ }
+    void update(const std::shared_ptr<ProcessStatus>& status) {
+        if(status->valid){
+            numSamples++;
+            totalDuration += status->totalDuration();
+            for(size_t i = durations.size(); i<status->starts.size(); i++){
+                durations.push_back(0);
+            }
+            for(size_t i=0; i<status->starts.size(); i++){
+                durations[i] += usBetween(status->starts[i], status->ends[i]);
+            }
+            deviceProcessNum[status->deviceId]++;
+        }
+    }
+
+    void show() {
+        auto end = std::chrono::steady_clock::now();
+        auto totalUs = usBetween(start, end);
+        BMLOG(INFO, "For model '%s'", name.c_str());
+        BMLOG(INFO, "samples=%d: real_time=%gms, avg_real_time=%gms", numSamples, totalUs/1000.0, (float)totalUs/1000.0/numSamples);
+        BMLOG(INFO, "            serialized_time=%gms, avg_serialized_time=%gms", totalDuration/1000.0, (float)totalDuration/1000.0/numSamples);
+        for(size_t i=0; i<durations.size(); i++){
+            BMLOG(INFO, "  -> total %s duration=%gms",
+                  __phaseMap[i],
+                  durations[i]/1000.0);
+        }
+        for(auto& p: deviceProcessNum){
+            BMLOG(INFO, "  -> device #%d processes %d samples", p.first, p.second);
+        }
+    }
+    ~StatInfo(){
     }
 };
 
@@ -129,14 +175,15 @@ public:
     template<typename PreFuncType, typename PostFuncType>
     BMDevicePool(const std::string& bmodel, PreFuncType preProcessFunc, PostFuncType postProcessFunc,
                  std::vector<DeviceId> userDeviceIds={}): atomicBatchSize(0) {
-        auto deviceIds = userDeviceIds;
+        deviceIds = userDeviceIds;
         if(userDeviceIds.empty()){
            deviceIds = getAvailableDevices();
         }
+        auto localDeviceIds = deviceIds;
         auto deviceNum = deviceIds.size();
         BM_ASSERT(deviceNum>0, "no device found");
-        std::function<std::shared_ptr<ContextType>(size_t)>  contextInitializer = [deviceIds, bmodel, this](size_t i) {
-            auto context = std::make_shared<ContextType>(deviceIds[i], bmodel);
+        std::function<std::shared_ptr<ContextType>(size_t)>  contextInitializer = [localDeviceIds, bmodel, this](size_t i) {
+            auto context = std::make_shared<ContextType>(localDeviceIds[i], bmodel);
             this->atomicBatchSize=context->getBatchSize();
             return context;
         };
@@ -170,16 +217,33 @@ public:
         pool->start();
     }
 
-    void stop(){
-        pool->stop();
+    void stop(int deviceId = -1){
+        if(deviceId == -1) {
+            pool->stop();
+            return;
+        }
+        for(size_t index=0; index<deviceIds.size(); index++){
+            if(deviceId == deviceIds[index]) {
+                pool->stop(index);
+                break;
+            }
+        }
     }
 
     virtual ~BMDevicePool() {
         stop();
     }
 
+    bool canPush(){
+        return pool->canPush();
+    }
+
     void push(InType in){
         pool->push(in);
+    }
+
+    bool allStopped() {
+        return pool->allStopped();
     }
 
     bool pop(OutType& out, std::shared_ptr<ProcessStatus>& status){
@@ -254,8 +318,11 @@ public:
     size_t getBatchSize(){
         return atomicBatchSize.load();
     }
+
+    size_t deviceNum() const { return deviceIds.size(); }
 private:
     RunnerPtr pool;
+    std::vector<DeviceId> deviceIds;
 };
 
 }

@@ -121,9 +121,9 @@ bool resultProcess(const PostOutType& out, std::map<size_t, std::string>& labelM
     return true;
 }
 
+
 int main(int argc, char* argv[]){
     set_log_level(INFO);
-    TimeRecorder recorder("inception");
     std::string dataPath = "../dataset";
     std::string bmodel = "../compilation/compilation.bmodel";
     std::string labelFile = "../inception_labels.txt";
@@ -135,24 +135,40 @@ int main(int argc, char* argv[]){
     size_t batchSize= runner.getBatchSize();
     auto labelMap = loadLabels(labelFile);
 
-
+    StatInfo info("inception");
     std::thread dataThread([dataPath, batchSize, &runner](){
         forEachBatch(dataPath, batchSize, [&runner](const InType& imageFiles){
             runner.push(imageFiles);
             return true;
         });
-        runner.push({});
-    });
-    std::thread resultThread([&runner, &labelMap](){
-        PostOutType out;
-        std::shared_ptr<ProcessStatus> status;
-        while(true){
-            while(!runner.pop(out, status)) {
+        while(!runner.allStopped()){
+            if(runner.canPush()) {
+                runner.push({});
+            } else {
                 std::this_thread::yield();
             }
-            status->show();
+        }
+    });
+    std::thread resultThread([&runner, &labelMap, &info](){
+        PostOutType out;
+        std::shared_ptr<ProcessStatus> status;
+        bool stopped = false;
+        while(true){
+            while(!runner.pop(out, status)) {
+                if(runner.allStopped()) {
+                    stopped = true;
+                    break;
+                }
+                std::this_thread::yield();
+            }
+            if(stopped) break;
+//            status->show();
+            info.update(status);
             if(!resultProcess(out, labelMap)){
-                runner.stop();
+                runner.stop(status->deviceId);
+            }
+            if(runner.allStopped()){
+                info.show();
                 break;
             }
         }

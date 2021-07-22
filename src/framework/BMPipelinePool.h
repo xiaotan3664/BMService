@@ -257,6 +257,10 @@ public:
         return outQueue->tryPop(value);
     }
 
+    bool isStopped(){
+        return done;
+    }
+
     void stop(){
         done = true;
     }
@@ -356,16 +360,32 @@ public:
            }
        }
     }
-
-    void stop(){
+    bool allStopped(){
        for(auto& pipeline: pipelines){
-           if(pipeline) pipeline->stop();
+           if(!pipeline->isStopped()){
+               return false;
+           }
        }
+       return true;
     }
 
+    void stop(int index = -1){
+        if(index == -1){
+            for(auto& pipeline: pipelines){
+                if(pipeline) pipeline->stop();
+            }
+        } else if(index<pipelines.size()){
+            pipelines[index]->stop();
+        }
+    }
+
+    bool canPush(){
+        return inQueue->canPush();
+    }
     void push(InType in) {
         inQueue->push(in);
     }
+
     bool pop(OutType& out) {
         return outQueue->tryPop(out);
     }

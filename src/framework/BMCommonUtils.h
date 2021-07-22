@@ -5,6 +5,8 @@
 #include <string>
 #include <sstream>
 #include <chrono>
+#include <map>
+#include <vector>
 
 namespace bm {
 
@@ -16,19 +18,18 @@ class Uncopiable {
     Uncopiable& operator = (const Uncopiable) = delete;
 };
 
-std::string steadyToString(std::chrono::steady_clock::time_point& tp);
+std::string steadyToString(const std::chrono::steady_clock::time_point& tp);
 
 using TimerClock = std::chrono::steady_clock;
-size_t msBetween(
-        std::chrono::steady_clock::time_point& start,
-        std::chrono::steady_clock::time_point& stop);
+size_t usBetween(const std::chrono::steady_clock::time_point &start,
+        const std::chrono::steady_clock::time_point &stop);
 
 class TimeRecorder{
 private:
-    std::chrono::time_point<TimerClock> start;
-    std::string name;
+    std::chrono::steady_clock::time_point start;
 public:
-    TimeRecorder(const std::string& name);
+    TimeRecorder();
+    size_t getUS();
     ~TimeRecorder();
 };
 
