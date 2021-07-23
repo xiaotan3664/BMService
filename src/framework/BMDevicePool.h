@@ -182,6 +182,11 @@ public:
         auto localDeviceIds = deviceIds;
         auto deviceNum = deviceIds.size();
         BM_ASSERT(deviceNum>0, "no device found");
+        std::string deviceStr = "";
+        for(auto id: deviceIds){
+            deviceStr += std::to_string(id)+" ";
+        }
+        BMLOG(INFO, "USING DEVICES: %s", deviceStr.c_str());
         std::function<std::shared_ptr<ContextType>(size_t)>  contextInitializer = [localDeviceIds, bmodel, this](size_t i) {
             auto context = std::make_shared<ContextType>(localDeviceIds[i], bmodel);
             this->atomicBatchSize=context->getBatchSize();

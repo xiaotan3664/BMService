@@ -11,6 +11,7 @@ const char* __phaseMap[]={
 
 BMDeviceContext::BMDeviceContext(DeviceId deviceId, const std::string &bmodel):deviceId(deviceId), batchSize(batchSize) {
     batchSize = -1;
+    BMLOG(INFO, "init context on device %d", deviceId);
     auto status = bm_dev_request(&handle, deviceId);
     BM_ASSERT_EQ(status, BM_SUCCESS);
     pBMRuntime = bmrt_create(handle);

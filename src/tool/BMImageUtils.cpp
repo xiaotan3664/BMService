@@ -89,7 +89,7 @@ std::vector<int> calcImageStride(int height, int width,
 
 bm_image readAlignedImage(bm_handle_t handle, const std::string &name)
 {
-    auto cvImage = cv::imread(name);
+    auto cvImage = cv::imread(name, cv::ImreadModes::IMREAD_COLOR, cv::bmcv::getId(handle));
     bm_image bmImage,  alignedImage;
     cv::bmcv::toBMI(cvImage, &bmImage);
     int stride1[3], stride2[3];

@@ -47,20 +47,18 @@ void BMNetwork::showInfo()
         "UINT32",
     };
     BMLOG(INFO, "NetName: %s", m_netinfo->name);
-    BMLOG(INFO, "Inputs:");
     for(int i=0; i<m_netinfo->input_num; i++){
         auto shapeStr = shape_to_str(m_netinfo->stages[0].input_shapes[i]);
-        BMLOG(INFO, "  %d) '%s' shape=%s dtype=%s scale=%g",
+        BMLOG(INFO, "  Input %d) '%s' shape=%s dtype=%s scale=%g",
               i,
               m_netinfo->input_names[i],
               shapeStr.c_str(),
               dtypeMap[m_netinfo->input_dtypes[i]],
               m_netinfo->input_scales[i]);
     }
-    BMLOG(INFO, "Outputs:");
     for(int i=0; i<m_netinfo->output_num; i++){
         auto shapeStr = shape_to_str(m_netinfo->stages[0].output_shapes[i]);
-        BMLOG(INFO, "  %d) '%s' shape=%s dtype=%s scale=%g",
+        BMLOG(INFO, "  Output %d) '%s' shape=%s dtype=%s scale=%g",
               i,
               m_netinfo->output_names[i],
               shapeStr.c_str(),
