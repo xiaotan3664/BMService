@@ -150,8 +150,10 @@ void dumpImage(bm_image& bmImage, const std::string& name){
             if(bmImage.data_type == DATA_TYPE_EXT_1N_BYTE){
                 auto data=(unsigned char*) buffers[i];
                 fprintf(fp, "%d\n", data[j]);
+            } else if(bmImage.data_type == DATA_TYPE_EXT_1N_BYTE_SIGNED){
+                auto data=(char*) buffers[i];
+                fprintf(fp, "%d\n", data[j]);
             }
-
         }
         delete [] ((unsigned char*)buffers[i]);
     }
