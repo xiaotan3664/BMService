@@ -24,6 +24,7 @@ void saveImage(bm_image& bmImage, const std::string& name = "image.jpg");
 void dumpImage(bm_image& bmImage, const std::string& name = "image.txt");
 
 std::map<size_t, std::string> loadLabels(const std::string& filename);
+std::map<std::string, size_t> loadClassRefs(const std::string& filename, const std::string& prefix="");
 }
 
 #endif // BMIMAGEUTILS_H

@@ -12,8 +12,7 @@ using ClassId = size_t;
 
 struct PostOutType {
     InType rawIns;
-    std::vector<ClassId> classes;
-    std::vector<float> scores;
+    std::vector<std::vector<std::pair<ClassId, float>>> classAndScores;
 };
 
 struct InceptionConfig {
@@ -104,41 +103,59 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
     } else {
         bmcv_image_convert_to(ctx->handle, in.size(), cfg.ConvertAttr, cfg.grayImages.data(), cfg.preOutImages.data());
     }
-
+    for(auto &image: alignedInputs) {
+        bm_image_destroy(image);
+    }
     return true;
 }
 
 bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& postOut, ContextPtr ctx){
+    const size_t K=5;
     postOut.rawIns = rawIn;
     auto outTensor = outTensors[0];
     float* data = outTensor->get_float_data();
     size_t batch = outTensor->shape(0);
     size_t len = outTensor->shape(1);
-    postOut.classes.resize(batch);
-    postOut.scores.resize(batch);
-    //outTensor->dumpData("out.txt");
+
+    postOut.classAndScores.resize(batch);
     for(size_t b=0; b<batch; b++){
-        auto& score = postOut.scores[b];
-        auto& cls = postOut.classes[b];
         float* allScores = data+b*len;
-        score = allScores[0];
-        cls = 0;
-        for(size_t l=1; l<len; l++){
-            if(score<allScores[l]) {
-                score= allScores[l];
-                cls=l;
-            }
-        }
+        postOut.classAndScores[b] = topk(allScores, len, K);
     }
     return true;
 }
 
-bool resultProcess(const PostOutType& out, std::map<size_t, std::string>& labelMap){
+struct Top5AccuracyStat {
+    size_t samples=0;
+    size_t top1=0;
+    size_t top5=0;
+    void show() {
+        BMLOG(INFO, "Accuracy: top1=%g%%, top5=%g%%", 100.0*top1/samples, 100.0*top5/samples);
+    }
+};
+
+bool resultProcess(const PostOutType& out, Top5AccuracyStat& stat,
+                   std::map<std::string, size_t>& refMap,
+                   std::map<size_t, std::string>& labelMap){
     if(out.rawIns.empty()) return false;
-    BM_ASSERT_EQ(out.rawIns.size(), out.classes.size());
+    BM_ASSERT_EQ(out.rawIns.size(), out.classAndScores.size());
     for(size_t i=0; i<out.rawIns.size(); i++){
-        BMLOG(INFO, "%s: class_id=%d: score=%f: label=%s", out.rawIns[i].c_str(), out.classes[i], out.scores[i],
-              labelMap[out.classes[i]].c_str());
+        auto& inName = out.rawIns[i];
+        auto realClass = refMap[out.rawIns[i]];
+        auto& classAndScores = out.classAndScores[i];
+        auto firstClass = classAndScores[0].first-1;
+        auto firstScore = classAndScores[0].second;
+        stat.samples++;
+        stat.top1 += firstClass == realClass;
+        for(auto& cs: classAndScores){
+            if(cs.first-1 == realClass){
+                stat.top5++;
+                break;
+            }
+        }
+        BMLOG(INFO, "%s: infer_class=%d: score=%f: real_class=%d: label=%s",
+              out.rawIns[i].c_str(), firstClass, firstScore,
+              realClass, labelMap[realClass].c_str());
     }
     return true;
 }
@@ -147,17 +164,24 @@ bool resultProcess(const PostOutType& out, std::map<size_t, std::string>& labelM
 int main(int argc, char* argv[]){
     set_log_level(INFO);
     std::string dataPath = "../dataset";
-    std::string bmodel = "../inception_fp32/compilation.bmodel";
-    std::string labelFile = "../inception_labels.txt";
+    std::string bmodel = "../models/inception/fp32.bmodel";
+    std::string refFile = "../models/inception/val.txt";
+    std::string labelFile = "../models/inception/labels.txt";
     if(argc>1) dataPath = argv[1];
     if(argc>2) bmodel = argv[2];
-    if(argc>3) labelFile = argv[2];
+    if(argc>3) refFile = argv[3];
+    if(argc>4) labelFile = argv[4];
     BMDevicePool<InType, PostOutType> runner(bmodel, preProcess, postProcess);
     runner.start();
     size_t batchSize= runner.getBatchSize();
+    std::string prefix = dataPath;
+    if(prefix[prefix.size()-1] != '/'){
+        prefix += "/";
+    }
+    auto refMap = loadClassRefs(refFile, prefix);
     auto labelMap = loadLabels(labelFile);
-
-    StatInfo info("inception");
+    ProcessStatInfo info("inception");
+    Top5AccuracyStat topStat;
     std::thread dataThread([dataPath, batchSize, &runner](){
         forEachBatch(dataPath, batchSize, [&runner](const InType& imageFiles){
             runner.push(imageFiles);
@@ -171,10 +195,11 @@ int main(int argc, char* argv[]){
             }
         }
     });
-    std::thread resultThread([&runner, &labelMap, &info](){
+    std::thread resultThread([&runner, &refMap, &labelMap, &info](){
         PostOutType out;
         std::shared_ptr<ProcessStatus> status;
         bool stopped = false;
+        Top5AccuracyStat stat;
         while(true){
             while(!runner.pop(out, status)) {
                 if(runner.allStopped()) {
@@ -184,13 +209,14 @@ int main(int argc, char* argv[]){
                 std::this_thread::yield();
             }
             if(stopped) break;
-//            status->show();
             info.update(status);
-            if(!resultProcess(out, labelMap)){
+
+            if(!resultProcess(out, stat, refMap, labelMap)){
                 runner.stop(status->deviceId);
             }
             if(runner.allStopped()){
                 info.show();
+                stat.show();
                 break;
             }
         }

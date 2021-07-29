@@ -14,7 +14,7 @@ else()
 endif()
 
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
-set(TARGET_ARCH "arm-pcie")
+set(TARGET_ARCH "x86-pcie")
 
 include_directories(src/framework)
 include_directories(src/tool)

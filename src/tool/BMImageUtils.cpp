@@ -194,4 +194,19 @@ std::map<size_t, std::string> loadLabels(const std::string &filename)
     return labelMap;
 }
 
+std::map<std::string, size_t> loadClassRefs(const std::string &filename, const std::string& prefix)
+{
+    std::ifstream ifs(filename);
+    std::string line, label;
+    std::map<std::string, size_t> classMap;
+    while(std::getline(ifs, line)){
+        auto iter = std::find(line.begin(), line.end(), ' ');
+        auto name = std::string(line.begin(), iter);
+        auto idStr = std::string(iter+1, line.end());
+        auto id = std::stol(idStr);
+        classMap[prefix+name] = id;
+    }
+    return classMap;
+}
+
 }

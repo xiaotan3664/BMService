@@ -7,6 +7,7 @@
 #include <chrono>
 #include <map>
 #include <vector>
+#include <algorithm>
 
 namespace bm {
 
@@ -47,6 +48,20 @@ std::set<T> stringToSet(const std::string &s)
         values.insert(v);
     }
     return values;
+}
+
+template<typename T>
+std::vector<std::pair<size_t, T>> topk(const T* data, size_t len, size_t k) {
+    std::vector<std::pair<size_t, T>> pair_data;
+    for(size_t i = 0; i<len; i++){
+        pair_data.emplace_back(i, data[i]);
+    }
+    std::partial_sort(pair_data.begin(), pair_data.begin()+k, pair_data.end(),
+                      [](const std::pair<size_t, T>& a, const std::pair<size_t, T>&b){
+                          return a.second>b.second;
+                      });
+    pair_data.resize(k);
+    return pair_data;
 }
 
 }

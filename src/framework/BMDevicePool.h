@@ -21,6 +21,8 @@ private:
     std::vector<bm_device_mem_t> mem_to_free;
     std::vector<std::vector<bm_image>> images_to_free;
     std::vector<bm_image> info_to_free;
+    void* preExtra;
+    void* postExtra;
 
 public:
     DeviceId deviceId;
@@ -59,6 +61,20 @@ public:
             bm_image_format_ext format,
             bm_image_data_format_ext dtype,
             int heap_id = BMCV_HEAP_ANY);
+
+    void setPreExtra(void* data){
+        preExtra = data;
+    }
+    void* getPreExtra(){
+        return preExtra;
+    }
+
+    void* getPostExtra(){
+        return postExtra;
+    }
+    void setPostExtra(void* data){
+        postExtra = data;
+    }
 
     void freeImages(std::vector<bm_image>& ref_images);
     ~BMDeviceContext();
@@ -102,14 +118,14 @@ struct ProcessStatus {
     }
 };
 
-struct StatInfo {
+struct ProcessStatInfo {
     size_t totalDuration = 0;
     size_t numSamples = 0;
     std::map<size_t, size_t> deviceProcessNum;
     std::vector<size_t> durations;
     std::string name;
     std::chrono::steady_clock::time_point start;
-    StatInfo(const std::string& name): name(name), start(std::chrono::steady_clock::now()){ }
+    ProcessStatInfo(const std::string& name): name(name), start(std::chrono::steady_clock::now()){ }
     void update(const std::shared_ptr<ProcessStatus>& status) {
         if(status->valid){
             numSamples++;
@@ -139,7 +155,7 @@ struct StatInfo {
             BMLOG(INFO, "  -> device #%d processes %d samples", p.first, p.second);
         }
     }
-    ~StatInfo(){
+    ~ProcessStatInfo(){
     }
 };
 
@@ -152,18 +168,21 @@ public:
         InType in;
         TensorVec preOut;
         std::shared_ptr<ProcessStatus> status;
+        void* extra;
     };
 
     struct _ForwardOutType {
         InType in;
         TensorVec forwardOut;
         std::shared_ptr<ProcessStatus> status;
+        void* extra;
     };
 
     struct _PostOutType {
         InType in;
         OutType out;
         std::shared_ptr<ProcessStatus> status;
+        void* extra;
     };
 
     using RunnerType = BMPipelinePool<InType, _PostOutType, BMDeviceContext>;
@@ -268,6 +287,7 @@ public:
         out.in = in;
         out.status->valid = preCoreFunc(in, out.preOut, ctx);
         out.status->end();
+        out.extra = ctx->getPreExtra();
         return true;
     }
 
@@ -293,6 +313,7 @@ public:
             out.status->valid = ctx->net->forward(in.preOut, out.forwardOut);
             out.status->end();
         }
+        out.extra = in.extra;
         return true;
     }
 
@@ -312,6 +333,7 @@ public:
 
     static bool postProcess(const _ForwardOutType& in, _PostOutType& out, ContextPtr ctx, PostProcessFunc postCoreFunc) {
         out.status = std::move(in.status);
+        ctx->setPostExtra(out.extra);
         if(out.status->valid){
             out.status->start();
             out.status->valid = postCoreFunc(in.in, in.forwardOut, out.out, ctx);
