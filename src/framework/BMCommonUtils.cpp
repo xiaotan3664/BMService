@@ -41,3 +41,11 @@ TimeRecorder::~TimeRecorder(){
 }
 
 };
+
+std::string baseName(const std::string &fullPath){
+    auto pos = fullPath.find_last_of('/');
+    if(pos != std::string::npos){
+        return fullPath.substr(pos+1);
+    }
+    return fullPath;
+}

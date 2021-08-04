@@ -8,6 +8,7 @@
 #include <map>
 #include <vector>
 #include <algorithm>
+#include <functional>
 
 namespace bm {
 
@@ -65,5 +66,7 @@ std::vector<std::pair<size_t, T>> topk(const T* data, size_t len, size_t k) {
 }
 
 }
+
+std::string baseName(const std::string& fullPath);
 
 #endif // BMCOMMONUTILS_H

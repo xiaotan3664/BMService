@@ -30,6 +30,7 @@ public:
     void* pBMRuntime;
     std::shared_ptr<BMNetwork> net;
     size_t batchSize;
+    void* configData;
 
     BMDeviceContext(DeviceId deviceId, const std::string& bmodel);
 
@@ -78,6 +79,8 @@ public:
 
     void freeImages(std::vector<bm_image>& ref_images);
     ~BMDeviceContext();
+    void *getConfigData() const;
+    void setConfigData(void *value);
 };
 
 using ContextPtr = typename std::shared_ptr<BMDeviceContext>;
@@ -182,7 +185,6 @@ public:
         InType in;
         OutType out;
         std::shared_ptr<ProcessStatus> status;
-        void* extra;
     };
 
     using RunnerType = BMPipelinePool<InType, _PostOutType, BMDeviceContext>;
@@ -333,7 +335,7 @@ public:
 
     static bool postProcess(const _ForwardOutType& in, _PostOutType& out, ContextPtr ctx, PostProcessFunc postCoreFunc) {
         out.status = std::move(in.status);
-        ctx->setPostExtra(out.extra);
+        ctx->setPostExtra(in.extra);
         if(out.status->valid){
             out.status->start();
             out.status->valid = postCoreFunc(in.in, in.forwardOut, out.out, ctx);

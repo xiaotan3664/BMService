@@ -23,9 +23,11 @@ public:
     bm_store_mode_t get_store_mode() const { return m_tensor->st_mode; };
     const bm_shape_t* get_shape() const { return &m_tensor->shape; }
     bm_data_type_t get_dtype() const { return m_tensor->dtype; }
+    size_t get_dtype_len() const;
     size_t shape(int dim) const {
         while(dim<0) dim+=m_tensor->shape.num_dims;
         return dim<m_tensor->shape.num_dims? m_tensor->shape.dims[dim]:1; }
+    ssize_t partial_shape_count(size_t begin, size_t end);
     size_t dims() const { return m_tensor->shape.num_dims; }
     float get_scale() const { return m_scale; }
 

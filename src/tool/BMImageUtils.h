@@ -15,10 +15,16 @@ std::vector<int> calcImageStride(
 
 bm_image readAlignedImage(bm_handle_t handle, const std::string& name);
 
+// for inceptionv3
 void centralCropAndResize(bm_handle_t handle,
                           std::vector<bm_image>& srcImages,
                           std::vector<bm_image>& dstImages,
                           float centralFactor = 0.875);
+// for yolov
+void aspectScaleAndPad(bm_handle_t handle,
+                          std::vector<bm_image>& srcImages,
+                          std::vector<bm_image>& dstImages,
+                          bmcv_color_t padColor);
 
 void saveImage(bm_image& bmImage, const std::string& name = "image.jpg");
 void dumpImage(bm_image& bmImage, const std::string& name = "image.txt");

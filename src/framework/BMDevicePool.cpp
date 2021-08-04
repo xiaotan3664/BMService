@@ -9,7 +9,18 @@ const char* __phaseMap[]={
     "POST-PROCESS"
 };
 
-BMDeviceContext::BMDeviceContext(DeviceId deviceId, const std::string &bmodel):deviceId(deviceId), batchSize(batchSize) {
+void *BMDeviceContext::getConfigData() const
+{
+    return configData;
+}
+
+void BMDeviceContext::setConfigData(void *value)
+{
+    configData = value;
+}
+
+BMDeviceContext::BMDeviceContext(DeviceId deviceId, const std::string &bmodel):
+    deviceId(deviceId), batchSize(batchSize), configData(nullptr) {
     batchSize = -1;
     BMLOG(INFO, "init context on device %d", deviceId);
     auto status = bm_dev_request(&handle, deviceId);

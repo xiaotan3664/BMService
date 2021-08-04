@@ -3,6 +3,7 @@
 #include<vector>
 #include <opencv2/opencv.hpp>
 #include <fstream>
+#include <cassert>
 #include "BMImageUtils.h"
 
 namespace bm {
@@ -184,7 +185,7 @@ std::map<size_t, std::string> loadLabels(const std::string &filename)
 {
     std::ifstream ifs(filename);
     std::string line, label;
-    size_t classId = 0;
+    size_t classId = -1;
     std::map<size_t, std::string> labelMap;
 
     while(std::getline(ifs, line)){
@@ -207,6 +208,46 @@ std::map<std::string, size_t> loadClassRefs(const std::string &filename, const s
         classMap[prefix+name] = id;
     }
     return classMap;
+}
+
+void aspectScaleAndPadSingle(bm_handle_t handle,
+                             bm_image& srcImage, bm_image& dstImage, bmcv_color_t color){
+
+    auto srcHeight = srcImage.height;
+    auto srcWidth = srcImage.width;
+    auto dstHeight = dstImage.height;
+    auto dstWidth = dstImage.width;
+    bmcv_rect_t cropRect = {0, 0, srcWidth, srcHeight};
+    bmcv_padding_atrr_t padAttr;
+    padAttr.if_memset = 1;
+    padAttr.dst_crop_stx = 0;
+    padAttr.dst_crop_sty = 0;
+    padAttr.padding_b = color.b;
+    padAttr.padding_g = color.g;
+    padAttr.padding_r = color.r;
+    auto HRatio = (float)dstHeight/srcHeight;
+    auto WRatio = (float)dstWidth/srcWidth;
+    if(HRatio <= WRatio){
+        padAttr.dst_crop_h = dstHeight;
+        padAttr.dst_crop_w = srcWidth* HRatio;
+        padAttr.dst_crop_stx = (dstWidth - padAttr.dst_crop_w)/2;
+    } else {
+        padAttr.dst_crop_w = dstWidth;
+        padAttr.dst_crop_h = srcHeight * WRatio;
+        padAttr.dst_crop_sty = (dstHeight- padAttr.dst_crop_h)/2;
+    }
+    auto ret = bmcv_image_vpp_convert_padding(handle, 1, srcImage, &dstImage, &padAttr, &cropRect);
+    assert(BM_SUCCESS == ret);
+}
+
+void aspectScaleAndPad(bm_handle_t handle,
+                       std::vector<bm_image> &srcImages,
+                       std::vector<bm_image> &dstImages,
+                       bmcv_color_t padColor)
+{
+    for(size_t i=0; i<srcImages.size(); i++){
+        aspectScaleAndPadSingle(handle, srcImages[i], dstImages[i], padColor);
+    }
 }
 
 }

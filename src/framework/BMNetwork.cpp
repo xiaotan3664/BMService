@@ -143,6 +143,28 @@ size_t BMTensor::get_elem_num() const {
 	return bmrt_shape_count(&m_tensor->shape);
 }
 
+size_t BMTensor::get_dtype_len() const {
+    auto t = m_tensor->dtype;
+    if(t == BM_FLOAT32 || t == BM_INT32 || t== BM_UINT32){
+        return 4;
+    } else if(t == BM_UINT16 || t==BM_INT16 || t==BM_FLOAT16){
+        return 2;
+    } else if(t == BM_UINT8 || t == BM_UINT8){
+        return 1;
+    } else {
+        BMLOG(FATAL, "Not support dtype=%d", t);
+    }
+}
+
+ssize_t BMTensor::partial_shape_count(size_t begin, size_t end)
+{
+    size_t count = 1;
+    for(size_t i=begin; i<=end; i++){
+        count *= shape(i);
+    }
+    return count;
+}
+
 size_t BMTensor::get_mem_size() const
 {
     size_t count = bmrt_tensor_bytesize(m_tensor);

@@ -68,7 +68,7 @@ struct InceptionConfig {
             grayImages = ctx->allocImagesWithoutMem(
                         netBatch, netHeight, netWidth*3, FORMAT_GRAY, DATA_TYPE_EXT_1N_BYTE, 64);
             bm_device_mem_t resizedMem;
-            bm_image_get_device_mem(resizedImages[0], &resizedMem);
+            bm_image_get_contiguous_device_mem(resizedImages.size(), resizedImages.data(), &resizedMem);
             bm_image_attach_contiguous_mem(grayImages.size(), grayImages.data(), resizedMem);
             preOutImages = ctx->allocImagesWithoutMem(
                         netBatch, netHeight, netWidth*3, FORMAT_GRAY, netDtype);
@@ -163,10 +163,11 @@ bool resultProcess(const PostOutType& out, Top5AccuracyStat& stat,
 
 int main(int argc, char* argv[]){
     set_log_level(INFO);
-    std::string dataPath = "../dataset";
-    std::string bmodel = "../models/inception/fp32.bmodel";
-    std::string refFile = "../models/inception/val.txt";
-    std::string labelFile = "../models/inception/labels.txt";
+    std::string topDir = "../";
+    std::string dataPath = topDir + "data/ILSVRC2012/images";
+    std::string bmodel = topDir + "models/inception/fp32.bmodel";
+    std::string refFile = topDir+ "data/ILSVRC2012/val.txt";
+    std::string labelFile = topDir + "data/ILSVRC2012/labels.txt";
     if(argc>1) dataPath = argv[1];
     if(argc>2) bmodel = argv[2];
     if(argc>3) refFile = argv[3];
