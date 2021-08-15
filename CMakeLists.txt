@@ -19,11 +19,13 @@ set(TARGET_ARCH "x86-pcie")
 include_directories(src/framework)
 include_directories(src/tool)
 include_directories(src/model)
+include_directories(thirdparty/jsonxx)
 
-aux_source_directory(./src/framework FRAMEWORK_FILES)
-aux_source_directory(./src/tool TOOL_FILES)
-aux_source_directory(./src/model MODEL_FILES)
-aux_source_directory(./src/main MAIN_FILES)
+aux_source_directory(src/framework FRAMEWORK_FILES)
+aux_source_directory(src/tool TOOL_FILES)
+aux_source_directory(src/model MODEL_FILES)
+aux_source_directory(src/main MAIN_FILES)
+set(JSONXX_SRC "thirdparty/jsonxx/jsonxx.cc")
 
 set(bmnnsdk_inc_dirs ${BMNNSDK2_TOP}/include
         ${BMNNSDK2_TOP}/include/bmruntime
@@ -71,13 +73,14 @@ endif ()
 include_directories(${bmnnsdk_inc_dirs})
 link_directories(${bmnnsdk_link_dirs})
 
+
 #add_executable(${CMAKE_PROJECT_NAME} ${MAIN_FILES} ${TOOL_FILES} ${FRAMEWORK_FILES})
 #target_link_libraries(${CMAKE_PROJECT_NAME} ${bmnnsdk_link_libs})
 
 foreach(MODEL_SOURCE ${MODEL_FILES})
     get_filename_component(MODEL_NAME ${MODEL_SOURCE} NAME_WE)
     string(CONCAT MODEL_TARGET  "BMService-" ${MODEL_NAME})
-    add_executable(${MODEL_TARGET} ${MODEL_SOURCE} ${TOOL_FILES} ${FRAMEWORK_FILES})
+    add_executable(${MODEL_TARGET} ${MODEL_SOURCE} ${TOOL_FILES} ${FRAMEWORK_FILES} ${JSONXX_SRC})
     target_link_libraries(${MODEL_TARGET} ${CMAKE_THREAD_LIBS_INIT})
     target_link_libraries(${MODEL_TARGET} ${bmnnsdk_link_libs})
 endforeach(MODEL_SOURCE)

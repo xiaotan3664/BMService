@@ -147,12 +147,14 @@ struct ProcessStatInfo {
         auto end = std::chrono::steady_clock::now();
         auto totalUs = usBetween(start, end);
         BMLOG(INFO, "For model '%s'", name.c_str());
-        BMLOG(INFO, "samples=%d: real_time=%gms, avg_real_time=%gms", numSamples, totalUs/1000.0, (float)totalUs/1000.0/numSamples);
+        BMLOG(INFO, "samples=%d: real_time=%gms, avg_real_time=%gms, speed=%g samples/sec",
+              numSamples, totalUs/1000.0, (float)totalUs/1000.0/numSamples,
+              numSamples*1e6/totalUs);
         BMLOG(INFO, "            serialized_time=%gms, avg_serialized_time=%gms", totalDuration/1000.0, (float)totalDuration/1000.0/numSamples);
         for(size_t i=0; i<durations.size(); i++){
-            BMLOG(INFO, "  -> total %s duration=%gms",
+            BMLOG(INFO, "  -> total %s duration=%gms, avg=%gms",
                   __phaseMap[i],
-                  durations[i]/1000.0);
+                  durations[i]/1000.0, durations[i]/1000.0/numSamples);
         }
         for(auto& p: deviceProcessNum){
             BMLOG(INFO, "  -> device #%d processes %d samples", p.first, p.second);

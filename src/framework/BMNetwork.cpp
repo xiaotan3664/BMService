@@ -143,6 +143,12 @@ size_t BMTensor::get_elem_num() const {
 	return bmrt_shape_count(&m_tensor->shape);
 }
 
+bool BMTensor::fill_device_mem(const void *data, size_t len, size_t mem_offset)
+{
+    auto mem = get_device_mem();
+    return bm_memcpy_s2d_partial_offset(m_handle, *mem, (void*)data, len, mem_offset) == BM_SUCCESS;
+}
+
 size_t BMTensor::get_dtype_len() const {
     auto t = m_tensor->dtype;
     if(t == BM_FLOAT32 || t == BM_INT32 || t== BM_UINT32){
@@ -202,20 +208,20 @@ float *BMTensor::get_float_data() {
             }
             get_raw_data();
             if(BM_INT8 == m_tensor->dtype){
-		    auto int8_data = (int8_t*)m_raw_data;
-		    for(size_t i = 0;i < elem_num; ++ i) {
-			m_float_data[i] = int8_data[i] * m_scale;
-		    }
+            auto int8_data = (int8_t*)m_raw_data;
+            for(size_t i = 0;i < elem_num; ++ i) {
+            m_float_data[i] = int8_data[i] * m_scale;
+            }
             } else {
-		    auto uint8_data = (uint8_t*)m_raw_data;
-		    for(size_t i = 0;i < elem_num; ++ i) {
-			m_float_data[i] = uint8_data[i] * m_scale;
-		    }
+            auto uint8_data = (uint8_t*)m_raw_data;
+            for(size_t i = 0;i < elem_num; ++ i) {
+            m_float_data[i] = uint8_data[i] * m_scale;
+            }
             }
         }else{
             BMLOG(FATAL, "NOT support dtype=%d", m_tensor->dtype);
         }
-	return m_float_data;
+    return m_float_data;
 }
 
 void BMTensor::dumpData(const char* filename) {

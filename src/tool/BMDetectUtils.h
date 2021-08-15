@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <iostream>
 #include "bmcv_api.h"
 
 namespace bm {
@@ -15,13 +16,18 @@ struct DetectBox {
     float xmax;
     float ymax;
     float confidence;
+    std::string categoryName;
     float iou(const DetectBox& b1);
 };
 
-void drawDetectBox(bm_image& bmImage, const std::vector<DetectBox>& boxes, const std::string& saveName="", std::map<size_t, std::string> nameMap={});
+void drawDetectBox(bm_image& bmImage, const std::vector<DetectBox>& boxes, const std::string& saveName="");
+
+void drawDetectBoxEx(bm_image& bmImage, const std::vector<DetectBox>& boxes, const std::vector<DetectBox>& trueBoxes, const std::string& saveName="");
 std::vector<DetectBox> singleNMS(const std::vector<DetectBox>& info,
                                           float iouThresh, bool useSoftNms=false,
                                           float sigma=0.3);
+
+std::ostream& operator<<(std::ostream& os, const DetectBox& box);
 
 std::vector<std::vector<DetectBox>> batchNMS(const std::vector<std::vector<DetectBox>>& batchInfo,
                                                       float iouThresh, bool useSoftNms=false, float sigma=0.3);
@@ -42,6 +48,7 @@ size_t argmax(
     return maxIndex;
 }
 
+std::map<std::string, std::vector<DetectBox> > readCocoDatasetBBox(const std::string &cocoAnnotationFile);
 
 }
 

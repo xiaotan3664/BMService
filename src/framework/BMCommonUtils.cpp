@@ -40,6 +40,17 @@ size_t usBetween(const std::chrono::steady_clock::time_point &start,
 TimeRecorder::~TimeRecorder(){
 }
 
+std::size_t strReplaceAll(std::string &inout, const std::string &what, const std::string &with)
+{
+    std::size_t count{};
+    for (std::string::size_type pos{};
+         inout.npos != (pos = inout.find(what.data(), pos, what.length()));
+         pos += with.length(), ++count) {
+        inout.replace(pos, what.length(), with.data(), with.length());
+    }
+    return count;
+}
+
 };
 
 std::string baseName(const std::string &fullPath){

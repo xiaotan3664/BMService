@@ -19,6 +19,8 @@ public:
     void set_device_mem(bm_device_mem_t *mem) { this->m_tensor->device_mem = *mem; }
     const bm_device_mem_t* get_device_mem() { return &this->m_tensor->device_mem; }
 
+    bool fill_device_mem(const void* data, size_t len, size_t mem_offset = 0);
+
     // basic attribute of tensor
     bm_store_mode_t get_store_mode() const { return m_tensor->st_mode; };
     const bm_shape_t* get_shape() const { return &m_tensor->shape; }

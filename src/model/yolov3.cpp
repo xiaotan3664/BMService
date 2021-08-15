@@ -4,6 +4,7 @@
 #include<thread>
 #include<sys/stat.h>
 #include <algorithm>
+#include <fstream>
 #include "BMDevicePool.h"
 #include "BMDeviceUtils.h"
 #include "BMImageUtils.h"
@@ -12,7 +13,13 @@
 
 using namespace bm;
 #define OUTPUT_DIR "out"
+#define OUTPUT_IMAGE_DIR  OUTPUT_DIR "/images"
+#define OUTPUT_PREDICTION_DIR  OUTPUT_DIR "/prediction"
+#define OUTPUT_GROUND_TRUTH_DIR OUTPUT_DIR "/groundtruth"
 std::map<size_t, std::string> globalLabelMap;
+std::map<std::string, std::vector<DetectBox>> globalGroundTruth;
+std::set<std::string> globalLabelSet;
+
 
 struct YOLOv3Config {
     bool initialized = false;
@@ -35,7 +42,7 @@ struct YOLOv3Config {
     float probThreshold;
     float iouThreshold;
     const size_t classNum = 80;
-    std::string savePath = OUTPUT_DIR;
+    std::string savePath = OUTPUT_IMAGE_DIR;
 
     void initialize(TensorPtr inTensor, ContextPtr ctx){
         if(initialized) return;
@@ -106,7 +113,6 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
     BM_ASSERT_EQ(inTensors.size(), 1);
     auto inTensor = inTensors[0];
     BM_ASSERT_EQ(inTensor->dims(), 4);
-    BM_ASSERT_EQ(inTensor->shape(3), 3);
 
     thread_local static YOLOv3Config cfg;
     cfg.initialize(inTensor, ctx);
@@ -170,10 +176,12 @@ bool yoloV3BoxParse(DetectBox& box, float* data, size_t len, float probThresh, C
             box.ymin<0 || box.ymax >= ci.inputHeight) {
         return false;
     }
+    box.categoryName = globalLabelMap[box.category];
     return true;
 }
 
 bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& postOut, ContextPtr ctx){
+    if(rawIn.empty()) return true;
     postOut.rawIns = rawIn;
     auto pCfg = (YOLOv3Config*)ctx->getConfigData();
     auto& cfg = *pCfg;
@@ -190,7 +198,7 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
     BM_ASSERT_EQ(batch, pInputImages->size());
 
     std::vector<CoordConvertInfo> coordInfos(batch);
-    for(size_t b=0; b<batch; b++){
+    for(size_t b=0; b<realBatch; b++){
         auto& image = (*pInputImages)[b];
         auto& ci = coordInfos[b];
 
@@ -240,7 +248,7 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
     // draw rectangle
     for(size_t b=0; b<batch; b++){
         auto name = baseName(rawIn[b]);
-        drawDetectBox(pInputImages->at(b), postOut.results[b], cfg.savePath+"/"+name, globalLabelMap);
+        drawDetectBoxEx(pInputImages->at(b), postOut.results[b], globalGroundTruth[name], cfg.savePath+"/"+name);
     }
 
     // clear extra data
@@ -253,23 +261,55 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
 
 bool resultProcess(const PostOutType& out){
     if(out.rawIns.empty()) return false;
+    auto imageNum = out.rawIns.size();
+    for(size_t i=0; i<imageNum; i++){
+        auto name = baseName(out.rawIns[i]);
+        if(!globalGroundTruth.count(name)) {
+            BMLOG(WARNING, "cannot find %s in ground true info", name.c_str());
+            continue;
+        }
+        std::string predName = OUTPUT_PREDICTION_DIR "/";
+        predName += name+ ".txt";
+        std::ofstream os(predName);
+        auto& boxes = out.results[i];
+        for(auto& box: boxes){
+            os<<box<<std::endl;
+        }
+
+        std::string gtName = OUTPUT_GROUND_TRUTH_DIR "/";
+        gtName += name + ".txt";
+        std::ofstream gtOs(gtName);
+        auto& gtBoxes = globalGroundTruth.at(name);
+        for(auto& box: gtBoxes){
+            if(!globalLabelSet.count(box.categoryName)) {
+                BMLOG(WARNING, "current prediction does not cover category %s", box.categoryName.c_str());
+                continue;
+            }
+            gtOs<<box<<std::endl;
+        }
+    }
     return true;
 }
-
 int main(int argc, char* argv[]){
     set_log_level(INFO);
     std::string topDir = "../";
     std::string dataPath = topDir + "data/coco/images";
     std::string bmodel = topDir + "models/yolov3/fp32.bmodel";
-    std::string refFile = topDir+ "data/coco/val.txt";
-    std::string labelFile = topDir + "data/coco/coco.names";
+    std::string refFile = topDir+ "data/coco/instances_val2017.json";
+    std::string labelFile = topDir + "data/coco/coco_val2017.names";
     if(argc>1) dataPath = argv[1];
     if(argc>2) bmodel = argv[2];
     if(argc>3) refFile = argv[3];
     if(argc>4) labelFile = argv[4];
+
     BMDevicePool<InType, PostOutType> runner(bmodel, preProcess, postProcess);
     mkdir(OUTPUT_DIR, 0777);
+    mkdir(OUTPUT_IMAGE_DIR, 0777);
+    mkdir(OUTPUT_PREDICTION_DIR, 0777);
+    mkdir(OUTPUT_GROUND_TRUTH_DIR, 0777);
     globalLabelMap = loadLabels(labelFile);
+    for(auto &p: globalLabelMap) globalLabelSet.insert(p.second);
+    globalGroundTruth =  readCocoDatasetBBox(refFile);
     runner.start();
     size_t batchSize= runner.getBatchSize();
     ProcessStatInfo info("yolov3");

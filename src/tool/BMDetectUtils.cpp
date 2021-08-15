@@ -1,45 +1,11 @@
+#include <fstream>
+#include "jsonxx.h"
 #include "opencv2/opencv.hpp"
+#include "BMCommonUtils.h"
 #include "BMDetectUtils.h"
 #include "BMLog.h"
 
 namespace  bm {
-
-void drawDetectBox(bm_image &bmImage, const std::vector<DetectBox> &boxes, const std::string &saveName, std::map<size_t, std::string> nameMap)   // Draw the predicted bounding box
-{
-    //Draw a rectangle displaying the bounding box
-    cv::Mat cvImage;
-    auto status =cv::bmcv::toMAT(&bmImage, cvImage, true);
-    BM_ASSERT_EQ(status, BM_SUCCESS);
-
-    BMLOG(INFO, "draw box for '%s'", saveName.c_str());
-    for(size_t i=0; i<boxes.size(); i++){
-        auto& box = boxes[i];
-        cv::rectangle(cvImage, cv::Point((int)box.xmin, (int)box.ymin), cv::Point((int)box.xmax, (int)box.ymax), cv::Scalar(0, 0, 255), 3);
-
-        //Get the label for the class name and its confidence
-        std::string label = cv::format("%.2f", box.confidence);
-        if(nameMap.count(box.category)){
-            label = nameMap[box.category] + ":" + label;
-        }else{
-            label = std::to_string(box.category) + ":" + label;
-        }
-
-        //Display the label at the top of the bounding box
-        int baseLine;
-        cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-        auto top = std::max((int)box.ymin, labelSize.height);
-        cv::putText(cvImage, label, cv::Point(box.xmin, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 1);
-        BMLOG(INFO, "  box #%d: [%d, %d, %d, %d], %s", i,
-              (size_t)box.xmin, (size_t)box.ymin, (size_t)box.xmax, (size_t)box.ymax, box.confidence, label.c_str());
-    }
-    static size_t saveCount=0;
-    std::string fullPath = saveName;
-    if(fullPath=="") {
-        fullPath = std::string("00000000") + std::to_string(saveCount)+".jpg";
-        fullPath = fullPath.substr(fullPath.size()-4-8);
-    }
-    cv::imwrite(fullPath, cvImage);
-}
 
 float DetectBox::iou(const DetectBox &b1) {
     auto o_xmin = std::max(xmin, b1.xmin);
@@ -92,5 +58,133 @@ std::vector<DetectBox> singleNMS(const std::vector<DetectBox> &info, float iouTh
     }
     return bestBoxes;
 }
+
+using namespace jsonxx;
+std::map<std::string, std::vector<DetectBox> > readCocoDatasetBBox(const std::string& cocoAnnotationFile)
+{
+    BMLOG(INFO, "Parsing annotation %s", cocoAnnotationFile.c_str());
+    std::map<size_t, std::string> idToName;
+    std::ifstream ifs(cocoAnnotationFile);
+    Object coco;
+    coco.parse(ifs);
+    auto& images = coco.get<Array>("images");
+    auto& annotations = coco.get<Array>("annotations");
+    for(size_t i=0; i<images.size(); i++){
+        auto& image = images.get<Object>(i);
+        auto filename = image.get<std::string>("file_name");
+        size_t id = image.get<Number>("id");
+        idToName[id] = filename;
+    }
+    auto& categories = coco.get<Array>("categories");
+    std::map<size_t, std::string> categoryMap;
+    for(size_t i=0; i<categories.size(); i++){
+        auto& category = categories.get<Object>(i);
+        size_t id = category.get<Number>("id");
+        auto name = category.get<std::string>("name");
+        categoryMap[id]=name;
+        BMLOG(INFO, "  category #%d: %s", id, name.c_str());
+    }
+    std::map<std::string, std::vector<DetectBox>> imageToBoxes;
+    for(size_t i=0; i<annotations.size(); i++){
+        auto& annotation = annotations.get<Object>(i);
+        size_t imageId = annotation.get<Number>("image_id");
+        if(!idToName.count(imageId)) continue;
+
+        size_t categoryId = annotation.get<Number>("category_id");
+        auto& bbox = annotation.get<Array>("bbox");
+        DetectBox box;
+        box.confidence = -1;
+        box.category = categoryId;
+        box.categoryName = categoryMap[categoryId];
+        box.xmin = bbox.get<Number>(0);
+        box.ymin = bbox.get<Number>(1);
+        box.xmax = box.xmin + bbox.get<Number>(2);
+        box.ymax = box.ymin + bbox.get<Number>(3);
+        imageToBoxes[idToName[imageId]].push_back(box);
+    }
+    BMLOG(INFO, "Parsing annotation %s done", cocoAnnotationFile.c_str());
+    return imageToBoxes;
+}
+
+void drawDetectBoxEx(bm_image &bmImage, const std::vector<DetectBox> &boxes, const std::vector<DetectBox> &trueBoxes, const std::string &saveName)
+{
+    //Draw a rectangle displaying the bounding box
+    cv::Mat cvImage;
+    auto status =cv::bmcv::toMAT(&bmImage, cvImage, true);
+    BM_ASSERT_EQ(status, BM_SUCCESS);
+
+    BMLOG(INFO, "draw predicted box for '%s'", saveName.c_str());
+    size_t borderWidth = 1;
+    for(size_t i=0; i<boxes.size(); i++){
+        auto& box = boxes[i];
+        cv::rectangle(cvImage, cv::Point((int)box.xmin, (int)box.ymin), cv::Point((int)box.xmax, (int)box.ymax), cv::Scalar(0, 0, 255), borderWidth);
+
+        //Get the label for the class name and its confidence
+        std::string label = std::string(":") + cv::format("%.2f", box.confidence);
+        if(box.categoryName != ""){
+            label = std::string("-") + box.categoryName +  label;
+        }
+        label = std::to_string(box.category) + label;
+
+        //Display the label at the top of the bounding box
+        int baseLine;
+        cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+        auto top = std::max((int)box.ymin, labelSize.height);
+        cv::putText(cvImage, label, cv::Point(box.xmin, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 255), 1);
+        BMLOG(INFO, "  box #%d: [%d, %d, %d, %d], %s", i,
+              (size_t)box.xmin, (size_t)box.ymin, (size_t)box.xmax, (size_t)box.ymax,
+              label.c_str());
+    }
+    if(!trueBoxes.empty()){
+        BMLOG(INFO, "draw true box for '%s'", saveName.c_str());
+        for(size_t i=0; i<trueBoxes.size(); i++){
+            auto& box = trueBoxes[i];
+            cv::rectangle(cvImage, cv::Point((int)box.xmin, (int)box.ymin), cv::Point((int)box.xmax, (int)box.ymax), cv::Scalar(0, 255, 0), borderWidth);
+
+            //Get the label for the class name and its confidence
+            std::string label;
+            label = std::to_string(box.category);
+            if(box.categoryName != ""){
+                label += "-" + box.categoryName;
+            }
+
+            //Display the label at the top of the bounding box
+            int baseLine;
+            cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+            auto top = std::max((int)box.ymax, labelSize.height);
+            cv::putText(cvImage, label, cv::Point(box.xmin, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 1);
+            BMLOG(INFO, "  box #%d: [%d, %d, %d, %d], %s", i,
+                  (size_t)box.xmin, (size_t)box.ymin, (size_t)box.xmax, (size_t)box.ymax, label.c_str());
+        }
+    }
+    static size_t saveCount=0;
+    std::string fullPath = saveName;
+    if(fullPath=="") {
+        fullPath = std::string("00000000") + std::to_string(saveCount)+".jpg";
+        fullPath = fullPath.substr(fullPath.size()-4-8);
+    }
+    cv::imwrite(fullPath, cvImage);
+
+}
+
+void drawDetectBox(bm_image &bmImage, const std::vector<DetectBox> &boxes, const std::string &saveName)   // Draw the predicted bounding box
+{
+    return drawDetectBoxEx(bmImage, boxes, {}, saveName);
+}
+
+std::ostream& operator<<(std::ostream &os, const DetectBox &box){
+    std::string categoryName = box.categoryName;
+    strReplaceAll(categoryName, " ", "_");
+    os<<categoryName<<" ";
+    if(box.confidence>=0){
+        os<<box.confidence<<" ";
+    }
+    os<<box.xmin<<" ";
+    os<<box.ymin<<" ";
+    os<<box.xmax<<" ";
+    os<<box.ymax;
+    return os;
+}
+
 
 }

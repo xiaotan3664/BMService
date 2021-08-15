@@ -65,6 +65,7 @@ std::vector<std::pair<size_t, T>> topk(const T* data, size_t len, size_t k) {
     return pair_data;
 }
 
+std::size_t strReplaceAll(std::string& inout, const std::string& what, const std::string& with);
 }
 
 std::string baseName(const std::string& fullPath);

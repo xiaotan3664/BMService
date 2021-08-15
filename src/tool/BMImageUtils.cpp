@@ -5,6 +5,7 @@
 #include <fstream>
 #include <cassert>
 #include "BMImageUtils.h"
+#include "BMLog.h"
 
 namespace bm {
 std::vector<int> calcImageStride(int height, int width,
@@ -183,6 +184,7 @@ static bool split_id_and_label(const std::string& line, size_t& id, std::string&
 
 std::map<size_t, std::string> loadLabels(const std::string &filename)
 {
+    BMLOG(INFO, "Loading prediction label file %s", filename.c_str());
     std::ifstream ifs(filename);
     std::string line, label;
     size_t classId = -1;
@@ -191,7 +193,9 @@ std::map<size_t, std::string> loadLabels(const std::string &filename)
     while(std::getline(ifs, line)){
         split_id_and_label(line, classId, label);
         labelMap[classId] = label;
+        BMLOG(INFO, " label #%d: %s", classId, label.c_str());
     }
+    BMLOG(INFO, "Loading prediction label file %s done", filename.c_str());
     return labelMap;
 }
 
