@@ -302,7 +302,6 @@ int main(int argc, char* argv[]){
     if(argc>3) refFile = argv[3];
     if(argc>4) labelFile = argv[4];
 
-    BMDevicePool<InType, PostOutType> runner(bmodel, preProcess, postProcess);
     mkdir(OUTPUT_DIR, 0777);
     mkdir(OUTPUT_IMAGE_DIR, 0777);
     mkdir(OUTPUT_PREDICTION_DIR, 0777);
@@ -310,6 +309,8 @@ int main(int argc, char* argv[]){
     globalLabelMap = loadLabels(labelFile);
     for(auto &p: globalLabelMap) globalLabelSet.insert(p.second);
     globalGroundTruth =  readCocoDatasetBBox(refFile);
+
+    BMDevicePool<InType, PostOutType> runner(bmodel, preProcess, postProcess);
     runner.start();
     size_t batchSize= runner.getBatchSize();
     ProcessStatInfo info("yolov3");
