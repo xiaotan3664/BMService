@@ -190,10 +190,16 @@ std::map<size_t, std::string> loadLabels(const std::string &filename)
     size_t classId = -1;
     std::map<size_t, std::string> labelMap;
 
+    size_t printCount = 0;
     while(std::getline(ifs, line)){
         split_id_and_label(line, classId, label);
         labelMap[classId] = label;
-        BMLOG(INFO, " label #%d: %s", classId, label.c_str());
+        if(printCount<100){
+            BMLOG(INFO, " label #%d: %s", classId, label.c_str());
+        } else if(printCount == 100){
+            BMLOG(INFO, " ...");
+        }
+        printCount++;
     }
     BMLOG(INFO, "Loading prediction label file %s done", filename.c_str());
     return labelMap;

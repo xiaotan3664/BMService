@@ -129,9 +129,9 @@ struct ProcessStatInfo {
     std::string name;
     std::chrono::steady_clock::time_point start;
     ProcessStatInfo(const std::string& name): name(name), start(std::chrono::steady_clock::now()){ }
-    void update(const std::shared_ptr<ProcessStatus>& status) {
+    void update(const std::shared_ptr<ProcessStatus>& status, size_t batch=1) {
         if(status->valid){
-            numSamples++;
+            numSamples += batch;
             totalDuration += status->totalDuration();
             for(size_t i = durations.size(); i<status->starts.size(); i++){
                 durations.push_back(0);
@@ -139,7 +139,7 @@ struct ProcessStatInfo {
             for(size_t i=0; i<status->starts.size(); i++){
                 durations[i] += usBetween(status->starts[i], status->ends[i]);
             }
-            deviceProcessNum[status->deviceId]++;
+            deviceProcessNum[status->deviceId] += batch;
         }
     }
 

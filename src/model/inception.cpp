@@ -113,8 +113,8 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
     const size_t K=5;
     postOut.rawIns = rawIn;
     auto outTensor = outTensors[0];
+    size_t batch = rawIn.size();
     float* data = outTensor->get_float_data();
-    size_t batch = outTensor->shape(0);
     size_t len = outTensor->shape(1);
 
     postOut.classAndScores.resize(batch);
@@ -141,7 +141,7 @@ bool resultProcess(const PostOutType& out, Top5AccuracyStat& stat,
     BM_ASSERT_EQ(out.rawIns.size(), out.classAndScores.size());
     for(size_t i=0; i<out.rawIns.size(); i++){
         auto& inName = out.rawIns[i];
-        auto realClass = refMap[out.rawIns[i]];
+        auto realClass = refMap[baseName(out.rawIns[i])];
         auto& classAndScores = out.classAndScores[i];
         auto firstClass = classAndScores[0].first-1;
         auto firstScore = classAndScores[0].second;
@@ -175,11 +175,7 @@ int main(int argc, char* argv[]){
     BMDevicePool<InType, PostOutType> runner(bmodel, preProcess, postProcess);
     runner.start();
     size_t batchSize= runner.getBatchSize();
-    std::string prefix = dataPath;
-    if(prefix[prefix.size()-1] != '/'){
-        prefix += "/";
-    }
-    auto refMap = loadClassRefs(refFile, prefix);
+    auto refMap = loadClassRefs(refFile, "");
     auto labelMap = loadLabels(labelFile);
     ProcessStatInfo info("inception");
     Top5AccuracyStat topStat;
@@ -210,7 +206,7 @@ int main(int argc, char* argv[]){
                 std::this_thread::yield();
             }
             if(stopped) break;
-            info.update(status);
+            info.update(status, out.rawIns.size());
 
             if(!resultProcess(out, stat, refMap, labelMap)){
                 runner.stop(status->deviceId);

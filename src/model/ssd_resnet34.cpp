@@ -513,7 +513,7 @@ int main(int argc, char* argv[]){
                 std::this_thread::yield();
             }
             if(stopped) break;
-            info.update(status);
+            info.update(status, out.rawIns.size());
             if(!resultProcess(out)){
                 runner.stop(status->deviceId);
             }
