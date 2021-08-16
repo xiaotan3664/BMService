@@ -17,6 +17,10 @@ git clone https://github.com/xiaotan3664/BMService.git
 cd BMService
 git submodule update --init --recursive
 ```
+Download Data and models
+Link: https://pan.baidu.com/s/1XazmfQ-qAa4oBZu6EoZrcQ
+Password: hglm
+
 
 After initializing your bmnnsdk environment, run the following commands to build:
 
