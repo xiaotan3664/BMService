@@ -18,6 +18,36 @@ bool isWhitespace(char c){
     return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
+std::string encodeUtf8(const std::string& text){
+    std::string encodeStr;
+    size_t pos = 0;
+    char buffer[16];
+    while(pos<text.size()){
+        unsigned char c = text[pos];
+        unsigned int value;
+        if((c&0x80) == 0) {
+            encodeStr+=c;
+            pos++;
+            continue;
+        } else if((c>>5) == 6 && pos+1<text.size()) { // 110xxxxx 10xxxxxx
+            value = (((c&0x1f))<<6) | (text[pos+1]&0x3f);
+            pos += 2;
+        } else if((c>>4) == 0xe && pos+2<text.size()) { // 1110xxxx 10xxxxxx 10xxxxxx
+            value = (((c&0xF)<<12)) | ((text[pos+1]&0x3f)<<6) | (text[pos+2]&0x3f);
+            pos += 3;
+        } else if((c>>3) == 0x1e && pos+3<text.size()) { // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+            value = (((c&0x7)<<18)) | ((text[pos+1]&0x3f)<<12) |
+                    ((text[pos+2]&0x3f)<<6) | (text[pos+3]&0x3f);
+            pos += 4;
+        } else {
+            BMLOG(FATAL, "%s cannot encode to utf8", text.c_str());
+        }
+        sprintf(buffer, "\\u%04x", value);
+        encodeStr += buffer;
+    }
+    return encodeStr;
+}
+
 std::vector<unsigned int> whitespaceSplitToUint(const std::string& text){
     std::vector<unsigned int> results;
     std::string slice;
@@ -44,6 +74,14 @@ std::vector<unsigned int> whitespaceSplitToUint(const std::string& text){
     return results;
 }
 
+std::string strStrip(const std::string& text){
+    std::string result;
+    size_t start=0;
+    size_t end=text.size();
+    while(start<end && isWhitespace(text[start])) start++;
+    while(start<end && isWhitespace(text[end-1])) end--;
+    return text.substr(start, end-start);
+}
 std::vector<std::string> whitespaceSplit(const std::string& text){
     std::vector<std::string> results;
     std::string slice;
@@ -77,11 +115,11 @@ std::pair<std::string, std::string> splitStringPair(const std::string& line, cha
     if(pos != std::string::npos) {
         value = line.substr(pos+1);
     }
-    return std::make_pair(key, value);
+    return std::make_pair(strStrip(key), strStrip(value));
 }
 
 struct SquadData {
-    unsigned long long id;
+    std::string id;
     std::vector<unsigned int> inputIds;
     std::vector<unsigned int> inputMask;
     std::vector<unsigned int> segmentIds;
@@ -99,7 +137,7 @@ struct SquadData {
             question = dict.at("question");
             refStart = atoi(dict.at("start_position").c_str());
             refEnd = atoi(dict.at("end_position").c_str());
-            id = atoll(dict.at("unique_id").c_str());
+            id = dict.at("qas_id");
             tokens = whitespaceSplit(dict.at("tokens"));
             docTokens = whitespaceSplit(dict.at("doc_tokens"));
             inputIds = whitespaceSplitToUint(dict.at("input_ids" ));
@@ -149,6 +187,7 @@ void parseSquadFile(const std::string& filename, size_t batch, Func func) {
     std::string line;
 
     while(std::getline(ifs, line)){
+        if(line == "===") { break; }
         if(line == "---") {
             data = std::make_shared<SquadData>();
             if(data->parse(dict)){
@@ -363,17 +402,20 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
     return true;
 }
 
-bool resultProcess(const PostOutType& out){
+bool resultProcess(const PostOutType& out, std::map<std::string, std::string>& idToAnswer){
     if(out.squadRecords.empty()) return false;
     auto batch = out.squadRecords.size();
     for(size_t b=0; b<batch; b++){
         auto squad = out.squadRecords[b];
         auto& result = out.results[b];
+//        BMLOG(INFO, "Q: %s", squad->question.c_str());
+//        BMLOG(INFO, "A: %s", squad->answer.c_str());
+//        for(auto& r: result){
+//            BMLOG(INFO, "  P(%.2f): '%s'", r.prob, r.answer.c_str(), r.prob);
+//        }
         BMLOG(INFO, "Q: %s", squad->question.c_str());
-        BMLOG(INFO, "A: %s", squad->answer.c_str());
-        for(auto& r: result){
-            BMLOG(INFO, "  P(%.2f): '%s'", r.prob, r.answer.c_str(), r.prob);
-        }
+        BMLOG(INFO, "  A: %s", result[0].answer.c_str());
+        idToAnswer[squad->id] = encodeUtf8(result[0].answer);
     }
     return true;
 }
@@ -382,8 +424,10 @@ int main(int argc, char** argv){
     set_log_level(INFO);
     std::string squadPath = "../data/squad/squad_data.txt";
     std::string squadModel = "../models/bert_squad/fp32.bmodel";
+    std::string squadOutput = "prediction.json";
     if(argc>1) squadPath = argv[1];
     if(argc>2) squadModel = argv[2];
+    if(argc>3) squadOutput = argv[3];
 
     BMDevicePool<InType, PostOutType> runner(squadModel, preProcess, postProcess);
     runner.start();
@@ -391,10 +435,7 @@ int main(int argc, char** argv){
     ProcessStatInfo info("squad-bert");
     std::thread dataThread([squadPath, batchSize, &runner](){
         parseSquadFile(squadPath, batchSize, [&runner](const std::vector<std::shared_ptr<SquadData>>& batchData){
-            static int i=0;
-            if(i>10) return false;
             runner.push(batchData);
-            i++;
             return true;
         });
         while(!runner.allStopped()){
@@ -405,7 +446,8 @@ int main(int argc, char** argv){
             }
         }
     });
-    std::thread resultThread([&runner, &info](){
+    std::map<std::string, std::string> prediction;
+    std::thread resultThread([&runner, &info, &prediction](){
         PostOutType out;
         std::shared_ptr<ProcessStatus> status;
         bool stopped = false;
@@ -419,7 +461,7 @@ int main(int argc, char** argv){
             }
             if(stopped) break;
             info.update(status, out.squadRecords.size());
-            if(!resultProcess(out)){
+            if(!resultProcess(out, prediction)){
                 runner.stop(status->deviceId);
             }
             if(runner.allStopped()){
@@ -430,6 +472,18 @@ int main(int argc, char** argv){
 
     dataThread.join();
     resultThread.join();
+    std::ofstream ofs(squadOutput);
+    ofs<<"{"<<std::endl;
+    size_t num = 0;
+    for(auto& p: prediction){
+        ofs<<"  \""<<p.first<<"\":\""<<p.second<<"\"";
+        if(num != prediction.size()-1){
+            ofs<<",";
+        }
+        ofs<<std::endl;
+        num++;
+    }
+    ofs<<"}"<<std::endl;
     info.show();
     return 0;
 }
