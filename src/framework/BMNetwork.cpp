@@ -204,19 +204,19 @@ float *BMTensor::get_float_data() {
         }else if (BM_INT8 == m_tensor->dtype || BM_UINT8 == m_tensor->dtype) {
             size_t elem_num = get_elem_num();
             if (m_float_data == nullptr){
-               m_float_data = new float[elem_num];
+                m_float_data = new float[elem_num];
             }
             get_raw_data();
             if(BM_INT8 == m_tensor->dtype){
-            auto int8_data = (int8_t*)m_raw_data;
-            for(size_t i = 0;i < elem_num; ++ i) {
-            m_float_data[i] = int8_data[i] * m_scale;
-            }
+                auto int8_data = (int8_t*)m_raw_data;
+                for(size_t i = 0;i < elem_num; ++ i) {
+                    m_float_data[i] = int8_data[i] * m_scale;
+                }
             } else {
-            auto uint8_data = (uint8_t*)m_raw_data;
-            for(size_t i = 0;i < elem_num; ++ i) {
-            m_float_data[i] = uint8_data[i] * m_scale;
-            }
+                auto uint8_data = (uint8_t*)m_raw_data;
+                for(size_t i = 0;i < elem_num; ++ i) {
+                    m_float_data[i] = uint8_data[i] * m_scale;
+                }
             }
         }else{
             BMLOG(FATAL, "NOT support dtype=%d", m_tensor->dtype);

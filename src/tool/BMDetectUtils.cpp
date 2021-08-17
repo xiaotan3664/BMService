@@ -114,27 +114,7 @@ void drawDetectBoxEx(bm_image &bmImage, const std::vector<DetectBox> &boxes, con
     BM_ASSERT_EQ(status, BM_SUCCESS);
 
     BMLOG(INFO, "draw predicted box for '%s'", saveName.c_str());
-    size_t borderWidth = 1;
-    for(size_t i=0; i<boxes.size(); i++){
-        auto& box = boxes[i];
-        cv::rectangle(cvImage, cv::Point((int)box.xmin, (int)box.ymin), cv::Point((int)box.xmax, (int)box.ymax), cv::Scalar(0, 0, 255), borderWidth);
-
-        //Get the label for the class name and its confidence
-        std::string label = std::string(":") + cv::format("%.2f", box.confidence);
-        if(box.categoryName != ""){
-            label = std::string("-") + box.categoryName +  label;
-        }
-        label = std::to_string(box.category) + label;
-
-        //Display the label at the top of the bounding box
-        int baseLine;
-        cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-        auto top = std::max((int)box.ymin, labelSize.height);
-        cv::putText(cvImage, label, cv::Point(box.xmin, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 255), 1);
-        BMLOG(INFO, "  box #%d: [%d, %d, %d, %d], %s", i,
-              (size_t)box.xmin, (size_t)box.ymin, (size_t)box.xmax, (size_t)box.ymax,
-              label.c_str());
-    }
+    size_t borderWidth = 2;
     if(!trueBoxes.empty()){
         BMLOG(INFO, "draw true box for '%s'", saveName.c_str());
         for(size_t i=0; i<trueBoxes.size(); i++){
@@ -150,12 +130,32 @@ void drawDetectBoxEx(bm_image &bmImage, const std::vector<DetectBox> &boxes, con
 
             //Display the label at the top of the bounding box
             int baseLine;
-            cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+            cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_COMPLEX_SMALL, 0.5, 1, &baseLine);
             auto top = std::max((int)box.ymax, labelSize.height);
-            cv::putText(cvImage, label, cv::Point(box.xmin, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 1);
+            cv::putText(cvImage, label, cv::Point(box.xmin, top), cv::FONT_HERSHEY_COMPLEX_SMALL, 1, cv::Scalar(0, 255, 0), 1);
             BMLOG(INFO, "  box #%d: [%d, %d, %d, %d], %s", i,
                   (size_t)box.xmin, (size_t)box.ymin, (size_t)box.xmax, (size_t)box.ymax, label.c_str());
         }
+    }
+    for(size_t i=0; i<boxes.size(); i++){
+        auto& box = boxes[i];
+        cv::rectangle(cvImage, cv::Point((int)box.xmin, (int)box.ymin), cv::Point((int)box.xmax, (int)box.ymax), cv::Scalar(0, 0, 255), borderWidth);
+
+        //Get the label for the class name and its confidence
+        std::string label = std::string(":") + cv::format("%.2f", box.confidence);
+        if(box.categoryName != ""){
+            label = std::string("-") + box.categoryName +  label;
+        }
+        label = std::to_string(box.category) + label;
+
+        //Display the label at the top of the bounding box
+        int baseLine;
+        cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+        auto top = std::max((int)box.ymin, labelSize.height);
+        cv::putText(cvImage, label, cv::Point(box.xmin, top), cv::FONT_HERSHEY_COMPLEX_SMALL, 1, cv::Scalar(0, 0, 255), 1);
+        BMLOG(INFO, "  box #%d: [%d, %d, %d, %d], %s", i,
+              (size_t)box.xmin, (size_t)box.ymin, (size_t)box.xmax, (size_t)box.ymax,
+              label.c_str());
     }
     static size_t saveCount=0;
     std::string fullPath = saveName;
