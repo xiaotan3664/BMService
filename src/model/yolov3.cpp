@@ -12,7 +12,7 @@
 #include "bmcv_api.h"
 
 using namespace bm;
-#define OUTPUT_DIR "out"
+#define OUTPUT_DIR "yolov3_out"
 #define OUTPUT_IMAGE_DIR  OUTPUT_DIR "/images"
 #define OUTPUT_PREDICTION_DIR  OUTPUT_DIR "/prediction"
 #define OUTPUT_GROUND_TRUTH_DIR OUTPUT_DIR "/groundtruth"
@@ -56,7 +56,7 @@ struct YOLOv3Config {
         float input_scale = 1.0;
         if(inTensor->get_dtype() == BM_FLOAT32){
             netDtype = DATA_TYPE_EXT_FLOAT32;
-            probThreshold = 0.5;
+            probThreshold = 0.25;
             iouThreshold = 0.45;
         } else {
             netDtype = DATA_TYPE_EXT_1N_BYTE_SIGNED;
@@ -125,7 +125,7 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
     bmcv_color_t color = {128, 128, 128};
 
     aspectScaleAndPad(ctx->handle, *alignedInputs, cfg.resizedImages, color);
-    saveImage(cfg.resizedImages[0], "resize.jpg");
+//    saveImage(cfg.resizedImages[0], "resize.jpg");
 
     auto mem = inTensor->get_device_mem();
     bm_image_attach_contiguous_mem(in.size(), cfg.preOutImages.data(), *mem);

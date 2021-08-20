@@ -113,7 +113,6 @@ void drawDetectBoxEx(bm_image &bmImage, const std::vector<DetectBox> &boxes, con
     auto status =cv::bmcv::toMAT(&bmImage, cvImage, true);
     BM_ASSERT_EQ(status, BM_SUCCESS);
 
-    BMLOG(INFO, "draw predicted box for '%s'", saveName.c_str());
     size_t borderWidth = 2;
     if(!trueBoxes.empty()){
         BMLOG(INFO, "draw true box for '%s'", saveName.c_str());
@@ -137,6 +136,7 @@ void drawDetectBoxEx(bm_image &bmImage, const std::vector<DetectBox> &boxes, con
                   (size_t)box.xmin, (size_t)box.ymin, (size_t)box.xmax, (size_t)box.ymax, label.c_str());
         }
     }
+    BMLOG(INFO, "draw predicted box for '%s'", saveName.c_str());
     for(size_t i=0; i<boxes.size(); i++){
         auto& box = boxes[i];
         cv::rectangle(cvImage, cv::Point((int)box.xmin, (int)box.ymin), cv::Point((int)box.xmax, (int)box.ymax), cv::Scalar(0, 0, 255), borderWidth);

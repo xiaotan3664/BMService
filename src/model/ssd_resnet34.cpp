@@ -12,7 +12,7 @@
 #include "bmcv_api.h"
 
 using namespace bm;
-#define OUTPUT_DIR "out"
+#define OUTPUT_DIR "ssd_resnet34_out"
 #define OUTPUT_IMAGE_DIR  OUTPUT_DIR "/images"
 #define OUTPUT_PREDICTION_DIR  OUTPUT_DIR "/prediction"
 #define OUTPUT_GROUND_TRUTH_DIR OUTPUT_DIR "/groundtruth"
@@ -323,6 +323,7 @@ bool SSDResnet34BoxParse(DetectBox& box,
     if(box.confidence <= probThresh) {
       return false;
     }
+    box.categoryName = globalLabelMap[box.category];
 
     // decode location
     float pred_cx = loc_data[0] * prior_scaling[0] * priorbox.anchor_w + priorbox.anchor_cx;
@@ -467,7 +468,7 @@ int main(int argc, char* argv[]){
     set_log_level(INFO);
     std::string topDir = "../";
     std::string dataPath = topDir + "data/coco/images";
-    std::string bmodel = topDir + "models/ssdresnet34/fp32.bmodel";
+    std::string bmodel = topDir + "models/ssd_resnet34/fp32.bmodel";
     std::string refFile = topDir+ "data/coco/instances_val2017.json";
     std::string labelFile = topDir + "data/coco/coco_val2017.names";
     if(argc>1) dataPath = argv[1];

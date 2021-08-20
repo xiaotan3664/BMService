@@ -14,110 +14,6 @@
 #include "BMLog.h"
 
 using namespace bm;
-bool isWhitespace(char c){
-    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-}
-
-std::string encodeUtf8(const std::string& text){
-    std::string encodeStr;
-    size_t pos = 0;
-    char buffer[16];
-    while(pos<text.size()){
-        unsigned char c = text[pos];
-        unsigned int value;
-        if((c&0x80) == 0) {
-            encodeStr+=c;
-            pos++;
-            continue;
-        } else if((c>>5) == 6 && pos+1<text.size()) { // 110xxxxx 10xxxxxx
-            value = (((c&0x1f))<<6) | (text[pos+1]&0x3f);
-            pos += 2;
-        } else if((c>>4) == 0xe && pos+2<text.size()) { // 1110xxxx 10xxxxxx 10xxxxxx
-            value = (((c&0xF)<<12)) | ((text[pos+1]&0x3f)<<6) | (text[pos+2]&0x3f);
-            pos += 3;
-        } else if((c>>3) == 0x1e && pos+3<text.size()) { // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-            value = (((c&0x7)<<18)) | ((text[pos+1]&0x3f)<<12) |
-                    ((text[pos+2]&0x3f)<<6) | (text[pos+3]&0x3f);
-            pos += 4;
-        } else {
-            BMLOG(FATAL, "%s cannot encode to utf8", text.c_str());
-        }
-        sprintf(buffer, "\\u%04x", value);
-        encodeStr += buffer;
-    }
-    return encodeStr;
-}
-
-std::vector<unsigned int> whitespaceSplitToUint(const std::string& text){
-    std::vector<unsigned int> results;
-    std::string slice;
-    bool prevIsWS = true;
-    for(const auto c: text){
-        if(isWhitespace(c)){
-            prevIsWS = true;
-            if(!slice.empty()){
-                results.push_back(atoi(slice.c_str()));
-                slice.clear();
-            }
-        } else {
-            if(prevIsWS){
-                slice = c;
-            } else {
-                slice += c;
-            }
-            prevIsWS = false;
-        }
-    }
-    if(!slice.empty()){
-        results.push_back(atoi(slice.c_str()));
-    }
-    return results;
-}
-
-std::string strStrip(const std::string& text){
-    std::string result;
-    size_t start=0;
-    size_t end=text.size();
-    while(start<end && isWhitespace(text[start])) start++;
-    while(start<end && isWhitespace(text[end-1])) end--;
-    return text.substr(start, end-start);
-}
-std::vector<std::string> whitespaceSplit(const std::string& text){
-    std::vector<std::string> results;
-    std::string slice;
-    bool prevIsWS = true;
-    for(const auto c: text){
-        if(isWhitespace(c)){
-            prevIsWS = true;
-            if(!slice.empty()){
-                results.push_back(slice);
-                slice.clear();
-            }
-        } else {
-            if(prevIsWS){
-                slice = c;
-            } else {
-                slice += c;
-            }
-            prevIsWS = false;
-        }
-    }
-    if(!slice.empty()){
-        results.push_back(slice);
-    }
-    return results;
-}
-
-std::pair<std::string, std::string> splitStringPair(const std::string& line, char split=':'){
-    auto pos = line.find_first_of(split);
-    std::string key = line.substr(0, pos);
-    std::string value = "";
-    if(pos != std::string::npos) {
-        value = line.substr(pos+1);
-    }
-    return std::make_pair(strStrip(key), strStrip(value));
-}
-
 struct SquadData {
     std::string id;
     std::vector<unsigned int> inputIds;
@@ -204,6 +100,9 @@ void parseSquadFile(const std::string& filename, size_t batch, Func func) {
             dict.insert(splitStringPair(line, ':'));
         }
     }
+    if(batchData.size()>0){
+        func(std::move(batchData));
+    }
 }
 
 const size_t max_nbest = 20;
@@ -246,7 +145,8 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
 void softmaxResult(std::vector<SquadResult>& result){
     if(result.empty()) return;
     float maxProb = result[0].prob;
-    for(size_t i=1; i<result.size(); i++){
+    for(size_t i=0; i<result.size(); i++){
+//        BMLOG(INFO, "%d: %g", i, result[i].prob);
         if(maxProb<result[i].prob){
             maxProb = result[i].prob;
         }
@@ -258,6 +158,7 @@ void softmaxResult(std::vector<SquadResult>& result){
     }
     for(size_t i=0; i<result.size(); i++){
         result[i].prob = result[i].prob/sum;
+//        BMLOG(INFO, "%d: %g", i, result[i].prob);
     }
 }
 
@@ -270,7 +171,7 @@ static void stripSpaces(const std::string& text, std::string& chars, std::map<si
     }
 }
 
-static std::string getFinalText(const std::string& pred, const std::string& orig, bool uncased){
+static std::string getFinalText(const std::string& pred, const std::string& orig){
 
     std::string lowerOrigText = orig;
     for(auto&c : lowerOrigText){
@@ -341,17 +242,17 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
     auto batchEnd = endTensor->get_float_data();
     for(size_t b=0; b<batch; b++){
         auto startData = batchStart + seqLen*b;
-        auto endData = batchStart + seqLen*b;
         auto nbestStarts = topk(startData, seqLen, max_nbest);
+        auto endData = batchEnd + seqLen*b;
         auto nbestEnds = topk(endData, seqLen, max_nbest);
         auto squad = postOut.squadRecords[b];
         auto& result = postOut.results[b];
         std::vector<SquadResult> candidates;
         for(auto& start: nbestStarts){
+            if(start.first >= squad->tokens.size()) continue;
+            if(!squad->tokenToOrigin.count(start.first)) continue;
             for(auto& end: nbestEnds) {
-                if(start.first >= squad->tokens.size()) continue;
                 if(end.first >= squad->tokens.size()) continue;
-                if(!squad->tokenToOrigin.count(start.first)) continue;
                 if(!squad->tokenToOrigin.count(end.first)) continue;
                 if(end.first<= start.first) continue;
                 auto length = end.first - start.first + 1;
@@ -363,8 +264,10 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
             }
         }
 
+        std::sort(candidates.begin(), candidates.end(), [](const SquadResult& r0, const SquadResult& r1){
+            return r1.start.second + r1.end.second < r0.start.second + r0.end.second;
+        });
         // decode the result
-        float probSum = 0;
         std::set<std::string> knownAnswers;
         for(auto& c: candidates){
             c.answer = "";
@@ -385,7 +288,7 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
             }
             origText += squad->docTokens[c.originEnd];
             // TODO: get_final_text()
-            c.answer = getFinalText(c.answer, origText, true);
+            c.answer = getFinalText(c.answer, origText);
 
             if(knownAnswers.count(c.answer)){
                 continue;
@@ -414,8 +317,12 @@ bool resultProcess(const PostOutType& out, std::map<std::string, std::string>& i
 //            BMLOG(INFO, "  P(%.2f): '%s'", r.prob, r.answer.c_str(), r.prob);
 //        }
         BMLOG(INFO, "Q: %s", squad->question.c_str());
-        BMLOG(INFO, "  A: %s", result[0].answer.c_str());
-        idToAnswer[squad->id] = encodeUtf8(result[0].answer);
+        if(result.empty()){
+            BMLOG(INFO, "  A: ---");
+        } else {
+            BMLOG(INFO, "  A(%g): %s", result[0].prob, result[0].answer.c_str());
+            idToAnswer[squad->id] = escape(result[0].answer);
+        }
     }
     return true;
 }
