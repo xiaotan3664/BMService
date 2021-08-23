@@ -10,6 +10,7 @@
 #include "BMImageUtils.h"
 #include "BMDetectUtils.h"
 #include "bmcv_api.h"
+#include "BMCommonUtils.h"
 
 using namespace bm;
 #define OUTPUT_DIR "ssd_resnet34_out"
@@ -149,6 +150,7 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
     thread_local static SSDResnet34Config cfg;
     cfg.initialize(inTensor, ctx);
 
+    TimeRecorder r;
     auto alignedInputs = new std::vector<bm_image>;
     for(auto imageName: in){
         auto image = readAlignedImage(ctx->handle, imageName);
@@ -158,7 +160,7 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
 
     aspectScaleAndPad(ctx->handle, *alignedInputs, cfg.resizedImages, color);
     //aspectResize(ctx->handle, *alignedInputs, cfg.resizedImages);
-    saveImage(cfg.resizedImages[0], "resize.jpg");
+//    saveImage(cfg.resizedImages[0], "resize.jpg");
 
     auto mem = inTensor->get_device_mem();
     bm_image_attach_contiguous_mem(in.size(), cfg.preOutImages.data(), *mem);

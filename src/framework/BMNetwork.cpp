@@ -225,16 +225,15 @@ float *BMTensor::get_float_data() {
 }
 
 void BMTensor::dumpData(const char* filename) {
-	if (m_tensor->dtype == BM_FLOAT32) {
-float* data = get_float_data();
-size_t elem_num = get_elem_num();
-auto fp = fopen(filename, "w");
-for(size_t i=0; i<elem_num; i++){
-fprintf(fp, "%f\n", data[i]);
-}
-fclose(fp);
-
-}
+    if (m_tensor->dtype == BM_FLOAT32) {
+        float* data = get_float_data();
+        size_t elem_num = get_elem_num();
+        auto fp = fopen(filename, "w");
+        for(size_t i=0; i<elem_num; i++){
+            fprintf(fp, "%f\n", data[i]);
+        }
+        fclose(fp);
+    }
 }
 
 }

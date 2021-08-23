@@ -228,6 +228,8 @@ static std::string getFinalText(const std::string& pred, const std::string& orig
 bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& postOut, ContextPtr ctx){
     postOut.squadRecords = rawIn;
     postOut.results.resize(rawIn.size());
+    outTensors[0]->dumpData("out0.txt");
+    outTensors[1]->dumpData("out1.txt");
 
     size_t batch = rawIn.size();
     auto startTensor = outTensors[0];

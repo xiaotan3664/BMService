@@ -82,8 +82,10 @@ std::vector<std::string> strSplitByChar(const std::string& text, char splittor);
 std::vector<std::string> whitespaceSplit(const std::string& text);
 std::pair<std::string, std::string> splitStringPair(const std::string& line, char split=':');
 
-void forEachFile(const std::string& path, std::function<void(const std::string& )> func);
-void forEachBatch(const std::string& path, size_t batchSize, std::function<void(const std::vector<std::string>&)> func);
+void forEachFile(const std::string& path, std::function<bool(const std::string& )> func);
+void forEachBatch(const std::string& path, size_t batchSize, std::function<bool (const std::vector<std::string>&)> func);
+
+float AUC(std::vector<std::pair<unsigned int, float> >  &scores);
 
 }
 #endif // BMCOMMONUTILS_H

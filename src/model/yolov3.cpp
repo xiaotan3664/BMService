@@ -56,7 +56,7 @@ struct YOLOv3Config {
         float input_scale = 1.0;
         if(inTensor->get_dtype() == BM_FLOAT32){
             netDtype = DATA_TYPE_EXT_FLOAT32;
-            probThreshold = 0.25;
+            probThreshold = 0.3;
             iouThreshold = 0.45;
         } else {
             netDtype = DATA_TYPE_EXT_1N_BYTE_SIGNED;

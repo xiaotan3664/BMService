@@ -39,9 +39,13 @@ void TimeRecorder::show() const
     if(eventNum == 0) return;
     for(size_t i=0; i<eventNum; i++){
         BMLOG(INFO, "%d: %s: %g ms", i, events[i].c_str(), timepoints[i]/1000.0);
-        BMLOG(INFO, "  | %g ms", (timepoints[i+1]-timepoints[i])/1000.0);
+        if(i!=eventNum-1){
+            BMLOG(INFO, "  | %g ms", (timepoints[i+1]-timepoints[i])/1000.0);
+        } else {
+            BMLOG(INFO, "  | %g ms", (endTime-timepoints[i])/1000.0);
+        }
     }
-    BMLOG(INFO, "%d: %s: %g ms", eventNum, "----end----", endTime);
+    BMLOG(INFO, "%d: %s: %g ms", eventNum, "==end==", endTime/1000.0);
 }
 
 TimeRecorder::TimeRecorder(): start(TimerClock::now()) {
@@ -241,7 +245,7 @@ void forEachFile(const std::string& path, std::function<bool (const std::string&
     }
 }
 
-void forEachBatch(const std::string &path, size_t batchSize, std::function<void (const std::vector<std::string> &)> func)
+void forEachBatch(const std::string &path, size_t batchSize, std::function<bool (const std::vector<std::string> &)> func)
 {
     DIR *d = nullptr;
     struct dirent *dp = nullptr;
@@ -261,18 +265,52 @@ void forEachBatch(const std::string &path, size_t batchSize, std::function<void 
         if(!S_ISDIR(st.st_mode)) {
             batchPaths.push_back(fullpath);
             if(batchSize == batchPaths.size()) {
-                func(std::move(batchPaths));
-        batchPaths.clear();
+                auto ok = func(std::move(batchPaths));
+                batchPaths.clear();
+                if(!ok) break;
             }
         }
     }
 
     if(!batchPaths.empty()){
         func(std::move(batchPaths));
-    batchPaths.clear();
+        batchPaths.clear();
     }
 
     closedir(d);
+}
+
+float AUC(std::vector<std::pair<unsigned int, float>>& scores)
+{
+    std::sort(scores.begin(), scores.end(), [](
+              const std::pair<unsigned int, float>& s1,
+              const std::pair<unsigned int, float>& s2
+              ){ return s1.second < s2.second; });
+    size_t numPositive=0;
+    float rankSum = 0;
+
+    size_t sameCount = 0;
+    size_t samePositive = 0;
+    size_t sameSum = 0;
+    float lastScore = 0;
+    for(size_t i=0; i<scores.size(); i++){
+        auto& s= scores[i];
+        numPositive += (s.first!=0);
+        if(s.second == lastScore || i==0){
+            sameSum += i+1;
+            sameCount++;
+            samePositive += (s.first!=0);
+        } else {
+            rankSum = rankSum + (float) samePositive * sameSum/sameCount;
+            sameSum = i+1;
+            sameCount = 1;
+            samePositive = (s.first!=0);
+            lastScore = s.second;
+        }
+    }
+    rankSum = rankSum + (float) samePositive * sameSum/sameCount;
+
+    return (rankSum - (float)numPositive*(numPositive+1)/2)/(numPositive*(scores.size()-numPositive));
 }
 
 
