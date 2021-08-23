@@ -135,8 +135,8 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
     for(auto data: in){
         BM_ASSERT_EQ(data->inputIds.size(), inTensors[0]->shape(1));
         inTensors[0]->fill_device_mem(data->inputIds.data(), data->inputIds.size()*sizeof(int), offset);
-        inTensors[1]->fill_device_mem(data->inputMask.data(), data->inputMask.size()*sizeof(int), offset);
-        inTensors[2]->fill_device_mem(data->segmentIds.data(), data->segmentIds.size()*sizeof(int), offset);
+        inTensors[1]->fill_device_mem(data->segmentIds.data(), data->segmentIds.size()*sizeof(int), offset);
+        inTensors[2]->fill_device_mem(data->inputMask.data(), data->inputMask.size()*sizeof(int), offset);
         offset += data->inputIds.size()*sizeof(int);
     }
     return true;
