@@ -8,3 +8,4 @@ __*__
 thirdparty
 *.swp
 python/bmservice/lib
+*.autosave
