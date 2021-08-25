@@ -30,7 +30,7 @@ std::vector<DetectBox> singleNMS(const std::vector<DetectBox>& info,
 std::ostream& operator<<(std::ostream& os, const DetectBox& box);
 
 std::vector<std::vector<DetectBox>> batchNMS(const std::vector<std::vector<DetectBox>>& batchInfo,
-                                                      float iouThresh, bool useSoftNms=false, float sigma=0.3);
+                                                      float iouThresh, bool useSoftNms=false, float sigma=0.3, size_t topk = 0);
 
 
 template <typename T, typename Pred = std::function<T(const T &)>>

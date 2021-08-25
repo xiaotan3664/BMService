@@ -20,6 +20,7 @@ include_directories(src/framework)
 include_directories(src/tool)
 include_directories(src/model)
 include_directories(thirdparty/jsonxx)
+include_directories(src/lib)
 
 aux_source_directory(src/framework FRAMEWORK_FILES)
 aux_source_directory(src/tool TOOL_FILES)
@@ -85,3 +86,11 @@ foreach(MODEL_SOURCE ${MODEL_FILES})
     target_link_libraries(${MODEL_TARGET} ${bmnnsdk_link_libs})
 endforeach(MODEL_SOURCE)
 
+
+aux_source_directory(src/lib LIB_SOURCES)
+set(LIB_TARGET bmservice)
+add_library(${LIB_TARGET} SHARED ${LIB_SOURCES} ${TOOL_FILES} ${FRAMEWORK_FILES} ${JSONXX_SRC})
+target_link_libraries(${LIB_TARGET} ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${LIB_TARGET} ${bmnnsdk_link_libs})
+
+INSTALL(TARGETS ${LIB_TARGET} LIBRARY DESTINATION python/bmservice/lib)

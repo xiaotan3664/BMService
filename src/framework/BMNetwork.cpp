@@ -190,8 +190,14 @@ size_t BMTensor::get_mem_size() const
 
 unsigned char *BMTensor::get_raw_data() {
     auto bytes = get_mem_size();
-    if (m_raw_data == NULL) {
+    if(m_raw_size < bytes) {
+        delete [] m_raw_data;
+        m_raw_data = nullptr;
+        m_raw_size = 0;
+    }
+    if (m_raw_data == nullptr) {
         m_raw_data = new unsigned char[bytes];
+        m_raw_size = bytes;
     }
     bm_status_t ret = bm_memcpy_d2s_partial(m_handle, m_raw_data, m_tensor->device_mem, bytes);
     BM_ASSERT_EQ(ret, BM_SUCCESS);
@@ -221,7 +227,16 @@ float *BMTensor::get_float_data() {
         }else{
             BMLOG(FATAL, "NOT support dtype=%d", m_tensor->dtype);
         }
-    return m_float_data;
+        return m_float_data;
+}
+
+size_t BMTensor::fill_host_mem(void *ptr, size_t len)
+{
+    auto bytes = get_mem_size();
+    size_t real_len = bytes>len? len: bytes;
+    bm_status_t ret = bm_memcpy_d2s_partial(m_handle, ptr, m_tensor->device_mem, real_len);
+    BM_ASSERT_EQ(ret, BM_SUCCESS);
+    return real_len;
 }
 
 void BMTensor::dumpData(const char* filename) {

@@ -13,7 +13,7 @@ namespace bm {
 class BMTensor{
 public:
     BMTensor(bm_handle_t handle, const char *name, float scale, bm_tensor_t* tensor, bool relase):
-        m_handle(handle), m_name(name), m_raw_data(nullptr), m_float_data(nullptr), m_scale(scale), m_tensor(tensor), need_release(relase) {
+        m_handle(handle), m_name(name), m_raw_data(nullptr), m_raw_size(0), m_float_data(nullptr), m_scale(scale), m_tensor(tensor), need_release(relase) {
     }
 
     void set_device_mem(bm_device_mem_t *mem) { this->m_tensor->device_mem = *mem; }
@@ -39,6 +39,7 @@ public:
     bm_tensor_t* raw_tensor() { return m_tensor; }
     unsigned char* get_raw_data();
     float *get_float_data();
+    size_t fill_host_mem(void* ptr, size_t len);
 
     virtual ~BMTensor();
     void dumpData(const char* name);
@@ -47,6 +48,7 @@ private:
     bm_handle_t  m_handle;
     std::string m_name;
     unsigned char* m_raw_data;
+    size_t m_raw_size;
     float* m_float_data;
     float m_scale;
     bool need_release;

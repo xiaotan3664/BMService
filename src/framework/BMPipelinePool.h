@@ -19,6 +19,7 @@ private:
 public:
     virtual ~BMPipelineNodeBase() {}
     virtual void start() = 0;
+    virtual void join() = 0;
     virtual void setOutQueue(std::shared_ptr<BMQueueVoid>) = 0;
 };
 
@@ -115,12 +116,15 @@ public:
         innerThread = std::thread(&BMPipelineNodeImp<InType, OutType, ContextType>::workThread, this);
         BMLOG(DEBUG, "thread created id=%d", innerThread.get_id());
     }
-
-    virtual ~BMPipelineNodeImp() {
-        BMLOG(DEBUG, "thread=%d destructed", innerThread.get_id());
+    void join() override {
         if(innerThread.joinable()){
             innerThread.join();
         }
+    }
+
+    virtual ~BMPipelineNodeImp() {
+        BMLOG(DEBUG, "thread=%d destructed", innerThread.get_id());
+        join();
     }
  };
 
@@ -263,11 +267,14 @@ public:
 
     void stop(){
         done = true;
+        for(auto& node: pipelineNodes){
+            node->join();
+        }
     }
 
     ~BMPipeline(){
         BMLOG(DEBUG, "PIPELINE destructed!");
-        stop();
+        if(!done) stop();
     }
 };
 
