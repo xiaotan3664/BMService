@@ -181,8 +181,7 @@ int main(int argc, char* argv[]){
     Top5AccuracyStat topStat;
     std::thread dataThread([dataPath, batchSize, &runner](){
         forEachBatch(dataPath, batchSize, [&runner](const InType& imageFiles){
-            runner.push(imageFiles);
-            return true;
+            return runner.push(imageFiles);
         });
         while(!runner.allStopped()){
             if(runner.canPush()) {

@@ -25,6 +25,7 @@ struct tensor_data_t {
 };
 unsigned int runner_start(const char* bmodel);
 void runner_stop(unsigned int runner_id);
+bool runner_all_stopped(size_t runner_id);
 void runner_show_status(unsigned int runner_id);
 
 unsigned int runner_put_input(unsigned runner_id, unsigned int input_num, const tensor_data_t* input_tensors, int need_copy);

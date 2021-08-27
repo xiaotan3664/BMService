@@ -146,12 +146,11 @@ int main(int argc, char** argv){
                 if(!input.parse(line)) continue;
                 inputs.push_back(input);
                 if(inputs.size()==batchSize){
-                    runner.push(inputs);
+                    if(!runner.push(inputs)) return false;
                     inputs.clear();
                 }
             }
-            if(inputs.size()>0) runner.push(inputs);
-            return true;
+            if(inputs.size()>0) return runner.push(inputs);
         });
         while(!runner.allStopped()){
             if(runner.canPush()) {

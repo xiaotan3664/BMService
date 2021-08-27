@@ -316,8 +316,7 @@ int main(int argc, char* argv[]){
     ProcessStatInfo info("yolov3");
     std::thread dataThread([dataPath, batchSize, &runner](){
         forEachBatch(dataPath, batchSize, [&runner](const std::vector<std::string> names){
-            runner.push(names);
-            return true;
+            return runner.push(names);
         });
         while(!runner.allStopped()){
             if(runner.canPush()) {

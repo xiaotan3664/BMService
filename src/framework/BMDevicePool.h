@@ -266,8 +266,8 @@ public:
         return pool->canPush();
     }
 
-    void push(InType in){
-        pool->push(in);
+    bool push(InType in){
+        return pool->push(in);
     }
 
     bool allStopped() {

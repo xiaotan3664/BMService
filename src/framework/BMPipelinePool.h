@@ -389,8 +389,13 @@ public:
     bool canPush(){
         return inQueue->canPush();
     }
-    void push(InType in) {
-        inQueue->push(in);
+
+    bool push(InType in) {
+        if(!allStopped()){
+            inQueue->push(in);
+            return true;
+        }
+        return false;
     }
 
     bool pop(OutType& out) {

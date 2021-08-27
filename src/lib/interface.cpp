@@ -29,16 +29,16 @@ static size_t elem_num(const unsigned int* shape, unsigned int dims){
 }
 
 struct InputType {
-    bool release_inside;
-    unsigned int id;
-    unsigned num;
-    tensor_data_t* tensors;
+    bool release_inside = false;
+    unsigned int id = 0;
+    unsigned num = 0;
+    tensor_data_t* tensors = nullptr;
 };
 
 struct OutputType {
-    unsigned int id;
-    unsigned num;
-    tensor_data_t* tensors;
+    unsigned int id = 0;
+    unsigned num = 0;
+    tensor_data_t* tensors = nullptr;
 };
 
 bool preProcess(const InputType& input, const TensorVec& inTensors, ContextPtr ctx);
@@ -65,6 +65,7 @@ struct RunnerInfo {
 std::map<unsigned int, std::shared_ptr<RunnerInfo>> globalRunnerInfos;
 
 bool preProcess(const InputType& input, const TensorVec& inTensors, ContextPtr ctx){
+    if(input.num == 0) return false;
     BM_ASSERT_EQ(input.num, inTensors.size());
     for(size_t i=0; i<input.num; i++){
         size_t in_mem_size = elem_num(input.tensors[i].shape, input.tensors[i].dims) * dtype_len(input.tensors[i].dtype);
@@ -76,6 +77,10 @@ bool preProcess(const InputType& input, const TensorVec& inTensors, ContextPtr c
 }
 
 bool postProcess(const InputType& input, const TensorVec& outTensors, OutputType& postOut, ContextPtr ctx){
+    if(input.num == 0) {
+        postOut.num = 0;
+        throw "finished"; // to stop current pipeline
+    }
     postOut.id = input.id;
     if(input.release_inside){
         for(size_t i=0; i<input.num; i++){
@@ -127,21 +132,30 @@ unsigned int runner_put_input(unsigned runner_id, unsigned int input_num, const 
     input.id = globalRunnerInfos[runner_id]->nextId();
     input.release_inside = need_copy;
     input.num = input_num;
-    if(need_copy){
-        input.tensors = new tensor_data_t[input_num];
-        memcpy(input.tensors, input_tensors, sizeof(tensor_data_t)*input_num);
-        for(size_t i = 0; i<input.num; i++){
-            auto mem_size = dtype_len(input_tensors[i].dtype) * elem_num(input_tensors[i].shape, input_tensors[i].dims);
-            input.tensors[i].data = new unsigned char[mem_size];
-            memcpy(input.tensors[i].data, input_tensors[i].data, mem_size);
+    if(input_num != 0){
+        if(need_copy){
+            input.tensors = new tensor_data_t[input_num];
+            memcpy(input.tensors, input_tensors, sizeof(tensor_data_t)*input_num);
+            for(size_t i = 0; i<input.num; i++){
+                auto mem_size = dtype_len(input_tensors[i].dtype) * elem_num(input_tensors[i].shape, input_tensors[i].dims);
+                input.tensors[i].data = new unsigned char[mem_size];
+                memcpy(input.tensors[i].data, input_tensors[i].data, mem_size);
+            }
+        } else {
+            input.tensors = (tensor_data_t*)input_tensors;
         }
     } else {
-        input.tensors = (tensor_data_t*)input_tensors;
+        input.tensors = nullptr;
     }
     globalRunnerInfos[runner_id]->runner.push(input);
     return input.id;
 }
 
+
+bool runner_all_stopped(size_t runner_id){
+    if(!globalRunnerInfos.count(runner_id)) return true;
+    return globalRunnerInfos[runner_id]->runner.allStopped();
+}
 
 static tensor_data_t *__runner_get_output(unsigned runner_id, unsigned int *task_id, unsigned int *output_num, unsigned int *is_valid, bool is_async){
     if(!globalRunnerInfos.count(runner_id)) return nullptr;

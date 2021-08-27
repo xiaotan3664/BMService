@@ -344,8 +344,7 @@ int main(int argc, char** argv){
     ProcessStatInfo info("squad-bert");
     std::thread dataThread([squadPath, batchSize, &runner](){
         parseSquadFile(squadPath, batchSize, [&runner](const std::vector<std::shared_ptr<SquadData>>& batchData){
-            runner.push(batchData);
-            return true;
+            return runner.push(batchData);
         });
         while(!runner.allStopped()){
             if(runner.canPush()) {
