@@ -18,19 +18,26 @@ struct DetectBox {
     float confidence;
     std::string categoryName;
     float iou(const DetectBox& b1);
+    bool isValid(float width=1.0, float height=1.0) const;
+    bool operator < (const DetectBox& other) const {
+        return confidence < other.confidence;
+    }
+    bool operator > (const DetectBox& other) const {
+        return confidence > other.confidence;
+    }
 };
+
 
 void drawDetectBox(bm_image& bmImage, const std::vector<DetectBox>& boxes, const std::string& saveName="");
 
 void drawDetectBoxEx(bm_image& bmImage, const std::vector<DetectBox>& boxes, const std::vector<DetectBox>& trueBoxes, const std::string& saveName="");
 std::vector<DetectBox> singleNMS(const std::vector<DetectBox>& info,
-                                          float iouThresh, bool useSoftNms=false,
-                                          float sigma=0.3, size_t topk = 0);
+                                 float iouThresh, size_t topk = 0, bool useSoftNms=false, float sigma=0.3);
 
 std::ostream& operator<<(std::ostream& os, const DetectBox& box);
 
 std::vector<std::vector<DetectBox>> batchNMS(const std::vector<std::vector<DetectBox>>& batchInfo,
-                                                      float iouThresh, bool useSoftNms=false, float sigma=0.3);
+                                             float iouThresh, size_t topk=0, bool useSoftNms=false, float sigma=0.3);
 
 
 template <typename T, typename Pred = std::function<T(const T &)>>

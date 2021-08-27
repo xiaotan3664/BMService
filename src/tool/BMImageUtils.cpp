@@ -91,21 +91,21 @@ std::vector<int> calcImageStride(int height, int width,
 }
 bm_image readAlignedImage(bm_handle_t handle, const std::string &name)
 {
-    TimeRecorder r;
-    r.record("read");
+//    TimeRecorder r;
+//    r.record("read");
     auto cvImage = cv::imread(name, cv::ImreadModes::IMREAD_COLOR, cv::bmcv::getId(handle));
     bm_image bmImage,  alignedImage;
-    r.record("toBMI");
+//    r.record("toBMI");
     cv::bmcv::toBMI(cvImage, &bmImage);
     int stride1[3], stride2[3];
     bm_image_get_stride(bmImage, stride1);
     stride2[0] = FFALIGN(stride1[0], 64);
     stride2[1] = FFALIGN(stride1[1], 64);
     stride2[2] = FFALIGN(stride1[2], 64);
-    r.record("create");
+//    r.record("create");
     bm_image_create(handle, bmImage.height, bmImage.width, bmImage.image_format, bmImage.data_type,
                     &alignedImage, stride2);
-    r.record("alloc");
+//    r.record("alloc");
     bm_image_alloc_dev_mem(alignedImage, BMCV_IMAGE_FOR_IN);
     bmcv_copy_to_atrr_t copyToAttr;
     memset(&copyToAttr, 0, sizeof(copyToAttr));
@@ -113,11 +113,11 @@ bm_image readAlignedImage(bm_handle_t handle, const std::string &name)
     copyToAttr.start_y = 0;
     copyToAttr.if_padding = 1;
 
-    r.record("copy");
+//    r.record("copy");
     bmcv_image_copy_to(handle, copyToAttr, bmImage, alignedImage);
-    r.record("destroy");
+//    r.record("destroy");
     bm_image_destroy(bmImage);
-    r.show();
+//    r.show();
     return alignedImage;
 }
 

@@ -21,15 +21,23 @@ float DetectBox::iou(const DetectBox &b1) {
     return (float)o_area/(b0_area+b1_area-o_area);
 }
 
-std::vector<std::vector<DetectBox> > batchNMS(const std::vector<std::vector<DetectBox> > &batchInfo, float iouThresh, bool useSoftNms, float sigma, size_t topk){
+bool DetectBox::isValid(float width, float height) const
+{
+    return !(xmin >= xmax ||
+            ymin >= ymax ||
+            xmin<0 || xmax >= width ||
+            ymin<0 || ymax >= height);
+}
+
+std::vector<std::vector<DetectBox> > batchNMS(const std::vector<std::vector<DetectBox> > &batchInfo, float iouThresh, size_t topk, bool useSoftNms, float sigma){
     std::vector<std::vector<DetectBox>> results(batchInfo.size());
     for(size_t i=0; i<batchInfo.size(); i++){
-        results[i] = singleNMS(batchInfo[i], iouThresh, useSoftNms, sigma, topk);
+        results[i] = singleNMS(batchInfo[i], iouThresh, topk, useSoftNms, sigma);
     }
     return results;
 }
 
-std::vector<DetectBox> singleNMS(const std::vector<DetectBox> &info, float iouThresh, bool useSoftNms, float sigma, size_t topk){
+std::vector<DetectBox> singleNMS(const std::vector<DetectBox> &info, float iouThresh, size_t topk, bool useSoftNms, float sigma){
     std::map<size_t, std::vector<DetectBox>> classifiedInfo;
     std::vector<DetectBox> bestBoxes;
     for(auto& i: info){
@@ -41,10 +49,9 @@ std::vector<DetectBox> singleNMS(const std::vector<DetectBox> &info, float iouTh
             auto bestIndex = argmax(boxes.data(), boxes.size(), [](const DetectBox& i){ return i.confidence; });
             auto& bestBox = boxes[bestIndex];
             bestBoxes.push_back(bestBox);
-            if(topk>0 && bestBox.size()>=topk){
+            if(topk>0 && bestBoxes.size()>=topk){
                 break;
             }
-
             if(!useSoftNms){
                 boxes.erase(std::remove_if(boxes.begin(), boxes.end(), [&bestBox, iouThresh](const DetectBox& box){
                     return bestBox.iou(box)>iouThresh;

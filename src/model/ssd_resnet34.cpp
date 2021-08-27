@@ -1,19 +1,20 @@
-#include <dirent.h>
+﻿#include <dirent.h>
 #include<vector>
 #include<map>
 #include<thread>
 #include<sys/stat.h>
 #include <algorithm>
 #include <fstream>
+#include <cmath>
+#include <iterator>
 #include "BMDevicePool.h"
 #include "BMDeviceUtils.h"
 #include "BMImageUtils.h"
 #include "BMDetectUtils.h"
 #include "bmcv_api.h"
-#include "BMCommonUtils.h"
 
 using namespace bm;
-#define OUTPUT_DIR "ssd_resnet34_out"
+#define OUTPUT_DIR "out"
 #define OUTPUT_IMAGE_DIR  OUTPUT_DIR "/images"
 #define OUTPUT_PREDICTION_DIR  OUTPUT_DIR "/prediction"
 #define OUTPUT_GROUND_TRUTH_DIR OUTPUT_DIR "/groundtruth"
@@ -21,18 +22,87 @@ std::map<size_t, std::string> globalLabelMap;
 std::map<std::string, std::vector<DetectBox>> globalGroundTruth;
 std::set<std::string> globalLabelSet;
 
+struct PriorBox {
+    float cx;
+    float cy;
+    float w;
+    float h;
+};
+std::ostream& operator<< (std::ostream& os, const PriorBox& box){
+    os<<"["<<box.cx<<","<<box.cy<<","<<box.w<<","<<box.h<<"]";
+    return os;
+}
+
+struct ImageShape {
+ImageShape(float h, float w):h(h),w(w) {}
+ImageShape():h(0),w(0) {}
+    float h;
+    float w;
+};
+
+std::vector<PriorBox> genPriorBox(const ImageShape& imageShape,
+                                  const std::vector<ImageShape>& layerShapes,
+                                  const std::vector<ImageShape>& layerSteps,
+                                  const std::vector<std::vector<float>>& layerScales,
+                                  const std::vector<std::vector<float>>& layerExtraScales,
+                                  const std::vector<std::vector<float>>& layerRatios,
+                                  float offset = 0.5) {
+    std::vector<PriorBox> boxes;
+    auto layerNum = layerShapes.size();
+    for(size_t l=0; l<layerNum; l++){
+        auto scales = layerScales[l];
+        auto extraScales = layerExtraScales[l];
+        auto ratios = layerRatios[l];
+        std::vector<ImageShape> boxShapes;
+        for(size_t s=0; s<scales.size(); s++){
+            ImageShape shape;
+            shape.h = scales[s];
+            shape.w = scales[s];
+            boxShapes.push_back(shape);
+            auto meanScale = sqrt(scales[s]*extraScales[s]);
+            shape.h = meanScale;
+            shape.w = meanScale;
+            boxShapes.push_back(shape);
+        }
+        for(auto s: scales){
+            for(auto r: ratios){
+                ImageShape shape;
+                shape.h = s/sqrt(r);
+                shape.w = s*sqrt(r);
+                boxShapes.emplace_back(shape);
+                std::swap(shape.h, shape.w);
+                boxShapes.emplace_back(shape);
+            }
+        }
+        auto& layerShape  = layerShapes[l];
+        auto& layerStep = layerSteps[l];
+        for(auto shape: boxShapes){
+            for(size_t h=0; h<layerShape.h; h++){
+                for(size_t w=0; w<layerShape.w; w++){
+                    PriorBox box;
+                    box.cx = (w+offset)*layerStep.w/imageShape.w;
+                    box.cy = (h+offset)*layerStep.h/imageShape.h;
+                    box.h = shape.h;
+                    box.w = shape.w;
+                    boxes.push_back(box);
+                }
+            }
+        }
+    }
+    return boxes;
+}
+
 struct SSDResnet34Config {
     bool initialized = false;
     bool isNCHW;
     size_t netBatch;
     size_t netHeight;
     size_t netWidth;
+    std::vector<PriorBox> priorBoxes;
 
     bm_image_format_ext netFormat;
     bm_image_data_format_ext netDtype;
     bmcv_convert_to_attr ConvertAttr;
-    bmcv_convert_to_attr ConvertAttrMean;
-    bmcv_convert_to_attr ConvertAttrStd;
     // use static to cache resizedImage, to avoid allocating memory everytime
     std::vector<bm_image> resizedImages;
     // bmcv_image_convert_to do not support RGB_PACKED format directly
@@ -43,8 +113,11 @@ struct SSDResnet34Config {
 
     float probThreshold;
     float iouThreshold;
+    size_t nmsTopK = 200;
+    size_t maxKeepBoxNum = 200;
     const size_t classNum = 81;
     std::string savePath = OUTPUT_IMAGE_DIR;
+    std::vector<float> priorScales;
 
     void initialize(TensorPtr inTensor, ContextPtr ctx){
         if(initialized) return;
@@ -59,11 +132,11 @@ struct SSDResnet34Config {
         if(inTensor->get_dtype() == BM_FLOAT32){
             netDtype = DATA_TYPE_EXT_FLOAT32;
             probThreshold = 0.5;
-            iouThreshold = 0.45;
+            iouThreshold = 0.5;
         } else {
             netDtype = DATA_TYPE_EXT_1N_BYTE_SIGNED;
-            probThreshold = 0.2;
-            iouThreshold = 0.45;
+            probThreshold = 0.5;
+            iouThreshold = 0.5;
             input_scale = inTensor->get_scale();
         }
         if(!isNCHW){
@@ -72,46 +145,40 @@ struct SSDResnet34Config {
             netFormat = FORMAT_RGB_PACKED;
             BM_ASSERT_EQ(inTensor->shape(3), 3);
         }
-        float scale = 1.0/255;
-        float bias = 0;
-        float real_scale = scale * input_scale;
-        float real_bias = bias * input_scale;
-        ConvertAttr.alpha_0 = real_scale;
-        ConvertAttr.beta_0 = real_bias;
-        ConvertAttr.alpha_1 = real_scale;
-        ConvertAttr.beta_1 = real_bias;
-        ConvertAttr.alpha_2 = real_scale;
-        ConvertAttr.beta_2 = real_bias;
 
-        float alpha = 1.0;
-        float mean_R = -0.485;
-        float mean_G = -0.456;
-        float mean_B = -0.406;
-        float real_alpha = alpha * input_scale;
-        float real_mean_R = mean_R * input_scale;
-        float real_mean_G = mean_G * input_scale;
-        float real_mean_B = mean_B * input_scale;
-        ConvertAttrMean.alpha_0 = real_alpha;
-        ConvertAttrMean.beta_0 = real_mean_R;
-        ConvertAttrMean.alpha_1 = real_alpha;
-        ConvertAttrMean.beta_1 = real_mean_G;
-        ConvertAttrMean.alpha_2 = real_alpha;
-        ConvertAttrMean.beta_2 = real_mean_B;
+        // y=(x/255.0-mean)/std
+        float scale_R = (1.0/255.0)/0.229;
+        float scale_G = (1.0/255.0)/0.224;
+        float scale_B = (1.0/255.0)/0.225;
+        float bias_R = -0.485/0.229;
+        float bias_G = -0.456/0.224;
+        float bias_B = -0.406/0.225;
 
-        float std_R = 1.0/0.229;
-        float std_G = 1.0/0.224;
-        float std_B = 1.0/0.225;
-        float beta = 0;
-        float real_std_R = std_R * input_scale;
-        float real_std_G = std_G * input_scale;
-        float real_std_B = std_B * input_scale;
-        float real_beta = beta * input_scale;
-        ConvertAttrStd.alpha_0 = real_std_R;
-        ConvertAttrStd.beta_0 = real_beta;
-        ConvertAttrStd.alpha_1 = real_std_G;
-        ConvertAttrStd.beta_1 = real_beta;
-        ConvertAttrStd.alpha_2 = real_std_B;
-        ConvertAttrStd.beta_2 = real_beta;
+        float real_scale_R = scale_R * input_scale;
+        float real_scale_G = scale_G * input_scale;
+        float real_scale_B = scale_B * input_scale;
+        float real_bias_R = bias_R * input_scale;
+        float real_bias_G = bias_G * input_scale;
+        float real_bias_B = bias_B * input_scale;
+        ConvertAttr.alpha_0 = real_scale_R;
+        ConvertAttr.beta_0 = real_bias_R;
+        ConvertAttr.alpha_1 = real_scale_G;
+        ConvertAttr.beta_1 = real_bias_G;
+        ConvertAttr.alpha_2 = real_scale_B;
+        ConvertAttr.beta_2 = real_bias_B;
+
+        priorScales = {0.1, 0.1, 0.2, 0.2};
+        ImageShape imageShape{1200,1200};
+        std::vector<ImageShape> layerShapes = {{50,50}, {25,25}, {13,13}, {7,7}, {3,3}, {3,3}};
+        std::vector<ImageShape> layerSteps = {{24,24}, {48,48}, {92,92}, {171,171}, {400,400}, {400,400}};
+        std::vector<std::vector<float>> scales ={{0.07}, {0.15}, {0.33}, {0.51}, {0.69}, {0.87}};
+        std::vector<std::vector<float>> extraScales = {{0.15}, {0.33}, {0.51}, {0.69}, {0.87}, {1.05}};
+        std::vector<std::vector<float>> ratios = {{2}, {2,3}, {2,3}, {2,3}, {2}, {2}};
+
+        BM_ASSERT_EQ(netHeight, imageShape.h);
+        BM_ASSERT_EQ(netWidth, imageShape.w);
+
+        priorBoxes = genPriorBox(imageShape, layerShapes, layerSteps, scales, extraScales, ratios, 0.5);
 
         resizedImages = ctx->allocAlignedImages(
                     netBatch, netHeight, netWidth, netFormat, DATA_TYPE_EXT_1N_BYTE);
@@ -150,16 +217,13 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
     thread_local static SSDResnet34Config cfg;
     cfg.initialize(inTensor, ctx);
 
-    TimeRecorder r;
     auto alignedInputs = new std::vector<bm_image>;
     for(auto imageName: in){
         auto image = readAlignedImage(ctx->handle, imageName);
         alignedInputs->push_back(image);
     }
-    bmcv_color_t color = {128, 128, 128};
 
-    aspectScaleAndPad(ctx->handle, *alignedInputs, cfg.resizedImages, color);
-    //aspectResize(ctx->handle, *alignedInputs, cfg.resizedImages);
+    centralCropAndResize(ctx->handle, *alignedInputs, cfg.resizedImages, 1.0);
 //    saveImage(cfg.resizedImages[0], "resize.jpg");
 
     auto mem = inTensor->get_device_mem();
@@ -167,263 +231,187 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
 
     if(cfg.isNCHW){
         bmcv_image_convert_to(ctx->handle, in.size(), cfg.ConvertAttr, cfg.resizedImages.data(), cfg.preOutImages.data());
-        bmcv_image_convert_to(ctx->handle, in.size(), cfg.ConvertAttrMean, cfg.preOutImages.data(), cfg.preOutImages.data());
-        bmcv_image_convert_to(ctx->handle, in.size(), cfg.ConvertAttrStd, cfg.preOutImages.data(), cfg.preOutImages.data());
     } else {
         bmcv_image_convert_to(ctx->handle, in.size(), cfg.ConvertAttr, cfg.grayImages.data(), cfg.preOutImages.data());
-        bmcv_image_convert_to(ctx->handle, in.size(), cfg.ConvertAttrMean, cfg.preOutImages.data(), cfg.preOutImages.data());
-        bmcv_image_convert_to(ctx->handle, in.size(), cfg.ConvertAttrStd, cfg.preOutImages.data(), cfg.preOutImages.data());
     }
     // pass input info to post process
     ctx->setPreExtra(alignedInputs);
     return true;
 }
 
-struct CoordConvertInfo {
-    size_t inputWidth;
-    size_t inputHeight;
-    float ioRatio;
-    float oiRatio;
-    float hOffset;
-    float wOffset;
-};
-
-struct Prior_Box {
-  float anchor_cx;
-  float anchor_cy;
-  float anchor_w;
-  float anchor_h;
-};
-
-bool get_prior_box(std::vector<Prior_Box> &prior_box) {
-
-    int layer_num = 6;
-    int ratio = 2;
-    int ratio_six = 3;
-    float offset = 0.5;
-    int image_shape[2] = {1200, 1200};
-    int shapes[layer_num][2] = {{50, 50}, {25, 25}, {13, 13}, {7, 7}, {3, 3}, {3, 3}};
-    float anchor_scales[layer_num] = {0.07, 0.15, 0.33, 0.51, 0.69, 0.87};
-    float extra_anchor_scales[layer_num] = {0.15, 0.33, 0.51, 0.69, 0.87, 1.05};
-    int layer_steps[layer_num] = {24, 48, 92, 171, 400, 400};
-    int num[layer_num] = {4, 6, 6, 6, 4, 4};
-
-    int box_per_layer[layer_num] = {0};
-    for (size_t i = 0; i < layer_num; i++) {
-      box_per_layer[i] = shapes[i][0]*shapes[i][1]*num[i];
+void center2Point(std::vector<DetectBox>& boxes){
+    for(auto& box: boxes){
+        box.xmin = box.xmin-box.xmax/2;
+        box.ymin = box.ymin-box.ymax/2;
+        box.xmax = box.xmin+box.xmax;
+        box.ymax = box.ymin+box.ymax;
     }
-
-    int priorbox_num = 0;
-    for (size_t i = 0; i < layer_num; i++) {
-      priorbox_num += box_per_layer[i];
+}
+void clipBoxs(std::vector<DetectBox>& boxes){
+    for(auto& box: boxes){
+        box.xmin = std::max(box.xmin,0.0f);
+        box.ymin = std::max(box.ymin,0.0f);
+        box.xmax = std::min(box.xmax,1.0f);
+        box.ymax = std::min(box.ymax,1.0f);
+        box.xmin = std::min(box.xmin, box.xmax);
+        box.ymin = std::min(box.ymin, box.ymax);
     }
-
-    int box_num_acc= 0;
-
-    //float image_cx[priorbox_num] = {0.0};
-    //float image_cy[priorbox_num] = {0.0};
-
-    //vector<Prior_Box> prior_box(priorbox_num);
-
-    for (size_t l = 0; l < layer_num; l++) {
-      if (l != 0) box_num_acc += box_per_layer[l-1];
-      if (num[l] == 4) {
-        for (size_t i = 0; i < shapes[l][0]*shapes[l][1]; i++) {
-          prior_box[box_num_acc + 4 * i].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-          prior_box[box_num_acc + 4 * i + 1].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i + 1].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-          prior_box[box_num_acc + 4 * i + 2].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i + 2].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-          prior_box[box_num_acc + 4 * i + 3].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i + 3].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-        }
-      } else {
-        for (size_t i = 0; i < shapes[l][0]*shapes[l][1]; i++) {
-          prior_box[box_num_acc + 4 * i].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-          prior_box[box_num_acc + 4 * i + 1].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i + 1].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-          prior_box[box_num_acc + 4 * i + 2].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i + 2].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-          prior_box[box_num_acc + 4 * i + 3].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i + 3].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-          prior_box[box_num_acc + 4 * i + 4].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i + 4].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-          prior_box[box_num_acc + 4 * i + 5].anchor_cx = (i % shapes[l][0] + offset) * layer_steps[l] / image_shape[0];
-          prior_box[box_num_acc + 4 * i + 5].anchor_cy = (i % shapes[l][1] + offset) * layer_steps[l] / image_shape[1];
-        }
-      }
-    }
-
-    //float image_w[priorbox_num] = {0.0};
-    //float image_h[priorbox_num] = {0.0};
-    box_num_acc = 0;
-
-    for (size_t l = 0; l < layer_num; l++) {
-      if(l != 0) box_num_acc += box_per_layer[l-1];
-      if(num[l] == 4) {
-        for (size_t i = 0; i < shapes[l][0]*shapes[l][1]; i++) {
-          prior_box[box_num_acc + 4 * i].anchor_w = anchor_scales[l];
-          prior_box[box_num_acc + 4 * i].anchor_h = anchor_scales[l];
-          prior_box[box_num_acc + 4 * i + 1].anchor_w = sqrt(anchor_scales[l] * extra_anchor_scales[l]);
-          prior_box[box_num_acc + 4 * i + 1].anchor_h = sqrt(anchor_scales[l] * extra_anchor_scales[l]);
-          prior_box[box_num_acc + 4 * i + 2].anchor_w = anchor_scales[l] * sqrt(ratio);
-          prior_box[box_num_acc + 4 * i + 2].anchor_h = anchor_scales[l] / sqrt(ratio);
-          prior_box[box_num_acc + 4 * i + 3].anchor_w = anchor_scales[l] / sqrt(ratio);
-          prior_box[box_num_acc + 4 * i + 3].anchor_h = anchor_scales[l] * sqrt(ratio);
-        }
-      } else {
-        for (size_t i = 0; i < shapes[l][0]*shapes[l][1]; i++) {
-          prior_box[box_num_acc + 6 * i].anchor_w = anchor_scales[l];
-          prior_box[box_num_acc + 6 * i].anchor_h = anchor_scales[l];
-          prior_box[box_num_acc + 6 * i + 1].anchor_w = sqrt(anchor_scales[l] * extra_anchor_scales[l]);
-          prior_box[box_num_acc + 6 * i + 1].anchor_h = sqrt(anchor_scales[l] * extra_anchor_scales[l]);
-          prior_box[box_num_acc + 6 * i + 2].anchor_w = anchor_scales[l] * sqrt(ratio);
-          prior_box[box_num_acc + 6 * i + 2].anchor_h = anchor_scales[l] / sqrt(ratio);
-          prior_box[box_num_acc + 6 * i + 3].anchor_w = anchor_scales[l] / sqrt(ratio);
-          prior_box[box_num_acc + 6 * i + 3].anchor_h = anchor_scales[l] * sqrt(ratio);
-          prior_box[box_num_acc + 6 * i + 4].anchor_w = anchor_scales[l] * sqrt(ratio_six);
-          prior_box[box_num_acc + 6 * i + 4].anchor_h = anchor_scales[l] / sqrt(ratio_six);
-          prior_box[box_num_acc + 6 * i + 5].anchor_w = anchor_scales[l] / sqrt(ratio_six);
-          prior_box[box_num_acc + 6 * i + 5].anchor_h = anchor_scales[l] * sqrt(ratio_six);
-        }
-      }
-    }
-    //return prior_box;
-    return true;
 }
 
-
-bool SSDResnet34BoxParse(DetectBox& box,
-                         float* loc_data,
-                         float* cls_data,
-                         Prior_Box& priorbox,
-                         size_t class_num,
-                         float probThresh,
-                         CoordConvertInfo& ci) {
-
-    float prior_scaling[4] = {0.1, 0.1, 0.2, 0.2};
-
-    float cls_min = 100.0;
-    float cls_max = 0.0;
-
-    for (size_t i = 0; i < class_num; i++) {
-      if (cls_data[i] < cls_min) cls_min = cls_data[i];
-      if (cls_data[i] > cls_max) cls_max = cls_data[i];
+void softmax(float* scores, const int* shape, const size_t dim, int axis){
+    size_t outer = 1;
+    size_t inner = 1;
+    while(axis<0) axis+=dim;
+    for(size_t i=0; i<dim; i++){
+        if(i<axis){ outer *= shape[i]; }
+        if(i>axis){ inner *= shape[i]; }
     }
-
-    for (size_t i = 0; i < class_num; i++) {
-      cls_data[i] = (cls_data[i] - cls_min) / (cls_max - cls_min);
+    auto len = shape[axis];
+    for(size_t x=0; x<outer; x++){
+        for(size_t y=0; y<inner; y++){
+            size_t base = x*inner*len + y;
+            float sum = 0;
+            for(size_t z =0; z<len; z++){
+                size_t offset = base + z*inner;
+                scores[offset] = exp(scores[offset]);
+                sum += scores[offset];
+            }
+            for(size_t z =0; z<len; z++){
+                size_t offset = base + z*inner;
+                scores[offset]/=sum;
+            }
+        }
     }
+}
 
-    box.category = argmax(cls_data, class_num);
-    if(box.category == 0) return false;
-
-    box.confidence = cls_data[box.category];
-    box.category = box.category - 1;
-    if(box.confidence <= probThresh) {
-      return false;
+// shape: rawBoxData [batch, 4, boxNum], rawScoreData [boxNum]
+std::vector<DetectBox> decodeBoxes(size_t batch, const float* rawBoxData,
+                                   const std::vector<PriorBox>& anchorBox,
+                                   const std::vector<float>& priorScales) {
+    auto boxNum = anchorBox.size();
+    std::vector<DetectBox> boxes(batch*boxNum);
+    for(size_t b=0; b<batch; b++){
+        auto boxOffset = b*boxNum;
+        auto boxData = rawBoxData + b*4*boxNum;
+        auto dataOffset = b*4*boxNum;
+        // consider cpu cache
+        auto locOffset = 0 * boxNum + dataOffset;
+        for(size_t i=0; i<boxNum; i++){
+            // decode location
+            boxes[boxOffset+i].xmin = (boxData[locOffset+i] * anchorBox[i].w* priorScales[0] + anchorBox[i].cx);
+        }
+        locOffset = 1 * boxNum + dataOffset;
+        for(size_t i=0; i<boxNum; i++){
+            boxes[boxOffset+i].ymin = (boxData[locOffset+i] * anchorBox[i].h* priorScales[1] + anchorBox[i].cy);
+        }
+        locOffset = 2 * boxNum + dataOffset;
+        for(size_t i=0; i<boxNum; i++){
+            boxes[boxOffset+i].xmax = exp(boxData[locOffset+i] * priorScales[2]) * anchorBox[i].w;
+        }
+        locOffset = 3 * boxNum + dataOffset;
+        for(size_t i=0; i<boxNum; i++){
+            boxes[boxOffset+i].ymax = exp(boxData[locOffset+i] * priorScales[3]) * anchorBox[i].h;
+        }
     }
-    box.categoryName = globalLabelMap[box.category];
+    center2Point(boxes);
+    return boxes;
+}
 
-    // decode location
-    float pred_cx = loc_data[0] * prior_scaling[0] * priorbox.anchor_w + priorbox.anchor_cx;
-    float pred_cy = loc_data[1] * prior_scaling[1] * priorbox.anchor_h + priorbox.anchor_cy;
-    float pred_w = exp(loc_data[2] * prior_scaling[2]) * priorbox.anchor_w;
-    float pred_h = exp(loc_data[3] * prior_scaling[3]) * priorbox.anchor_h;
-
-    // center -> point
-    box.xmin = (pred_cx - pred_w / 2) * 1200;
-    box.ymin = (pred_cy - pred_h / 2) * 1200;
-    box.xmax = (pred_cx + pred_w / 2) * 1200;
-    box.ymax = (pred_cy + pred_h / 2) * 1200;
-
-    // restore original coordinates
-    box.xmin = (box.xmin - ci.wOffset) * ci.ioRatio;
-    box.xmax = (box.xmax - ci.wOffset) * ci.ioRatio;
-    box.ymin = (box.ymin - ci.hOffset) * ci.ioRatio;
-    box.ymax - (box.ymax - ci.hOffset) * ci.ioRatio;
-
-    // filter some invalid boxes by confidence
-    if(box.xmin >= box.xmax ||
-            box.ymin >= box.ymax ||
-            box.xmin<0 || box.xmax >= ci.inputWidth ||
-            box.ymin<0 || box.ymax >= ci.inputHeight) {
-        return false;
+// shape: boxes [batch*boxNum], rawScoreData [batch, classNum, boxNum]
+// out class:(batch*boxes)
+std::map<size_t, std::vector<std::vector<DetectBox>>> selectBoxes(
+        const std::vector<DetectBox>& boxes, const float* rawScoreData,
+        size_t batch, size_t classNum, size_t boxNum, float selectThresh) {
+    std::map<size_t, std::vector<std::vector<DetectBox>>> result;
+    for(size_t b=0; b<batch; b++){
+        auto batchScoreOffset = b*classNum*boxNum;
+        auto boxOffset = b*boxNum;
+        for(size_t c=1; c<classNum; c++){
+            result[c].resize(batch);
+            auto& validBoxes = result[c][b];
+            auto scoreData = rawScoreData + batchScoreOffset + c*boxNum;
+            for(size_t n=0; n<boxNum; n++){
+                auto& box = boxes[boxOffset + n];
+                if(!box.isValid(1.0, 1.0)) continue;
+                if(scoreData[n]<=selectThresh) continue;
+                validBoxes.push_back(boxes[boxOffset + n]);
+                validBoxes.back().confidence = scoreData[n];
+                validBoxes.back().category = c;
+                validBoxes.back().categoryName = globalLabelMap[c-1];
+            }
+        }
     }
-    return true;
+    return result;
+}
+
+std::vector<DetectBox> sortBoxes(const std::vector<DetectBox>& boxes, size_t num_keep){
+   return topkValues(boxes.data(), boxes.size(), num_keep);
+}
+
+std::vector<std::vector<DetectBox>> batchSortBoxes(const std::vector<std::vector<DetectBox>>& batchBoxes, size_t num_keep){
+    std::vector<std::vector<DetectBox>> batchResult(batchBoxes.size());
+    std::transform(batchBoxes.begin(), batchBoxes.end(), batchResult.begin(), [num_keep](const std::vector<DetectBox>& boxes) { return sortBoxes(boxes, num_keep); });
+    return batchResult;
 }
 
 bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& postOut, ContextPtr ctx){
     postOut.rawIns = rawIn;
     auto pCfg = (SSDResnet34Config*)ctx->getConfigData();
     auto& cfg = *pCfg;
+    BM_ASSERT_EQ(outTensors.size(),2);
 
     auto pInputImages = reinterpret_cast<std::vector<bm_image>*>(ctx->getPostExtra());
-    size_t batch = outTensors[0]->shape(0);
-    size_t prior_box_num = outTensors[0]->shape(2);
+    size_t batch =    outTensors[0]->shape(0);
     size_t classNum = outTensors[0]->shape(1);
+    size_t boxNum =   outTensors[0]->shape(2);
+    BM_ASSERT_EQ(outTensors[1]->shape(0), batch);
+    BM_ASSERT_EQ(outTensors[1]->shape(1), 4);
+    BM_ASSERT_EQ(outTensors[1]->shape(2), boxNum);
 
-    std::vector<CoordConvertInfo> coordInfos(batch);
-    for(size_t b=0; b<batch; b++){
-        auto& image = (*pInputImages)[b];
-        auto& ci = coordInfos[b];
+    // [batch, classNum, boxNum]
+    auto scoreData = outTensors[0]->get_float_data();
+    // [batch, 4, boxNum]
+    auto rawBoxData = outTensors[1]->get_float_data();
 
-        ci.inputWidth = image.width;
-        ci.inputHeight = image.height;
-        ci.ioRatio = std::max((float)ci.inputWidth/cfg.netWidth,
-                               (float)ci.inputHeight/cfg.netHeight);
-        ci.oiRatio = 1/ci.ioRatio;
-        ci.hOffset = (cfg.netHeight - ci.oiRatio * ci.inputHeight)/2;
-        ci.wOffset = (cfg.netWidth - ci.oiRatio * ci.inputWidth)/2;
-    }
+    // decode boxes to [0, 1]
+    auto boxes = decodeBoxes(batch, rawBoxData, cfg.priorBoxes, cfg.priorScales);
 
-    std::vector<std::vector<DetectBox>> batchBoxInfos(batch, std::vector<DetectBox>(prior_box_num));
+    // softmax scores
+    auto scoreShape = outTensors[0]->get_shape();
+    softmax(scoreData, scoreShape->dims, scoreShape->num_dims, 1);
 
-    std::vector<Prior_Box> prior_box(prior_box_num);
-    if (get_prior_box(prior_box) == false)
-      return false;
-
-    //fill batchBoxInfo
-    auto cls = outTensors[0]->get_float_data();
-    auto loc = outTensors[1]->get_float_data();
-    std::vector<int> batchIndice(batch, 0);
-    for(size_t b=0; b<batch; b++) {
-      auto& ci = coordInfos[b];
-      for (size_t i = 0; i < prior_box_num; i++) {
-         float loc_data[4];
-         for (size_t l = 0; l < 4; l++) {
-         //  loc_data[i] = loc[b][l][i];
-           auto raw_loc_offset = l * prior_box_num + i;
-           loc_data[l] = loc[raw_loc_offset];
-         }
-         float cls_data[classNum];
-         for (size_t c = 0; c < classNum; c++) {
-         //  cls_data[i] = cls[b][c][i];
-           auto raw_cls_offset = c * prior_box_num + i;
-           cls_data[c] = cls[raw_cls_offset];
-         }
-         auto& boxInfo = batchBoxInfos[b][batchIndice[b]];
-         auto& priorbox = prior_box[i];
-         if(SSDResnet34BoxParse(boxInfo, loc_data, cls_data, priorbox, classNum, cfg.probThreshold, ci)){
-             batchIndice[b]++;
-         }
-      }
-    }
-
-    // resize box
-    for(size_t b=0; b<batch; b++){
-        batchBoxInfos[b].resize(batchIndice[b]);
-    }
+    auto classifiedBoxes = selectBoxes(boxes, scoreData, batch, classNum, boxNum, cfg.probThreshold);
 
     // NMS for result box
-    postOut.results = batchNMS(batchBoxInfos, cfg.iouThreshold);
+    auto& batchResult = postOut.results;
+    batchResult.resize(batch);
+    for(auto& r: batchResult){
+        r.reserve(cfg.nmsTopK*classNum);
+    }
+    for(auto& cb: classifiedBoxes) {
+        cb.second = batchNMS(cb.second, cfg.iouThreshold, cfg.nmsTopK);
+        for(size_t b=0; b<batch; b++){
+            auto& result = batchResult[b];
+            result.insert(result.end(), cb.second[b].begin(), cb.second[b].end());
+        }
+    }
+    for(size_t b=0; b<batch; b++){
+        auto& result = batchResult[b];
+        result = topkValues(result.data(), result.size(), cfg.maxKeepBoxNum);
+        auto inputHeight = pInputImages->at(b).height;
+        auto inputWidth = pInputImages->at(b).width;
+        for(auto& r: result){
+            r.xmin *= inputWidth;
+            r.xmax *= inputWidth;
+            r.ymin *= inputHeight;
+            r.ymax *= inputHeight;
+        }
+    }
 
     // draw rectangle
     for(size_t b=0; b<batch; b++){
         auto name = baseName(rawIn[b]);
-        drawDetectBoxEx(pInputImages->at(b), postOut.results[b], globalGroundTruth[name], cfg.savePath+"/"+name);
+        drawDetectBoxEx(pInputImages->at(b), batchResult[b], globalGroundTruth[name], cfg.savePath+"/"+name);
     }
 
     // clear extra data

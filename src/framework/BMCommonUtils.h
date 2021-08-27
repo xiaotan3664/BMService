@@ -58,15 +58,39 @@ std::set<T> stringToSet(const std::string &s)
 template<typename T>
 std::vector<std::pair<size_t, T>> topk(const T* data, size_t len, size_t k) {
     std::vector<std::pair<size_t, T>> pair_data;
+    size_t realK = (k==0 || k>len)?len:k;
     for(size_t i = 0; i<len; i++){
         pair_data.emplace_back(i, data[i]);
     }
-    std::partial_sort(pair_data.begin(), pair_data.begin()+k, pair_data.end(),
+
+    std::partial_sort(pair_data.begin(), pair_data.begin()+realK, pair_data.end(),
                       [](const std::pair<size_t, T>& a, const std::pair<size_t, T>&b){
                           return a.second>b.second;
                       });
-    pair_data.resize(k);
+    if(k>0 && pair_data.size()>k){
+        pair_data.resize(k);
+    }
     return pair_data;
+}
+
+template<typename T>
+std::vector<size_t> topkIndice(const T* data, size_t len, size_t k) {
+    auto pairs = topk(data, len, k);
+    std::vector<size_t> indice(pairs.size());
+    for(size_t i=0; i<pairs.size(); i++){
+        indice[i] = pairs[i].first;
+    }
+    return indice;
+}
+
+template<typename T>
+std::vector<T> topkValues(const T* data, size_t len, size_t k) {
+    auto pairs = topk(data, len, k);
+    std::vector<T> values(pairs.size());
+    for(size_t i=0; i<pairs.size(); i++){
+        values[i] = pairs[i].second;
+    }
+    return values;
 }
 
 std::size_t strReplaceAll(std::string& inout, const std::string& what, const std::string& with);
