@@ -47,7 +47,6 @@ class BMTensor(ct.Structure):
             self.shape[i] = ct.c_uint32(data.shape[i])
         self.dtype = ct.c_uint32(bmtype(data.dtype))
         self.data = data.ctypes.data_as(ct.c_void_p)
-        print("0x%x"%self.data)
 
 class BMService:
     def __init__(self, bmodel_path):
@@ -73,6 +72,12 @@ class BMService:
     def try_get(self):
         return self.__get(self.__lib.runner_try_to_get_output)
 
+    def stopped(self):
+        return self.__lib.runner_all_stopped(self.runner_id)
+        
+    def empty(self):
+        return self.__lib.runner_empty(self.runner_id)
+
     def __get(self, func):
         output_num= ct.c_uint32(0)
         task_id = ct.c_uint32(0)
@@ -85,7 +90,6 @@ class BMService:
         if output_valid.value == 0:
             return task_id, [], False
         for i in range(output_num.value):
-            print(output_tensors[i])
             outputs.append(output_tensors[i].to_numpy())
         self.__lib.runner_release_output(output_num, output_tensors)
         return task_id.value, outputs, True

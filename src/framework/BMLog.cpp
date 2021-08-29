@@ -16,13 +16,19 @@ void set_log_level(LogLevel level){
 struct __log_initializer{
     __log_initializer(){
         auto level = LogLevel::INFO;
-        auto level_cstr = getenv(BM_LOG_LEVEL);
-        if(!level_cstr){
-            level = (LogLevel)atoi(level_cstr);
-        }
         set_log_level(level);
+        set_env_log_level();
     }
 };
-__log_initializer __log_init();
+static __log_initializer __log_init();
+
+void set_env_log_level()
+{
+    auto level_cstr = getenv(BM_LOG_LEVEL);
+    if(level_cstr){
+        LogLevel level = (LogLevel)atoi(level_cstr);
+        set_log_level(level);
+    }
+}
 
 }

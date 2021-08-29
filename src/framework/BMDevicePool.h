@@ -270,6 +270,10 @@ public:
         return pool->push(in);
     }
 
+    bool empty() {
+        return pool->empty();
+    }
+
     bool allStopped() {
         return pool->allStopped();
     }
@@ -338,11 +342,9 @@ public:
     static bool postProcess(const _ForwardOutType& in, _PostOutType& out, ContextPtr ctx, PostProcessFunc postCoreFunc) {
         out.status = std::move(in.status);
         ctx->setPostExtra(in.extra);
-        if(out.status->valid){
-            out.status->start();
-            out.status->valid = postCoreFunc(in.in, in.forwardOut, out.out, ctx);
-            out.status->end();
-        }
+        out.status->start();
+        out.status->valid &= postCoreFunc(in.in, in.forwardOut, out.out, ctx);
+        out.status->end();
         return true;
     }
 

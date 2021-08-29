@@ -376,6 +376,10 @@ public:
        return true;
     }
 
+    bool empty() {
+        return outQueue->empty();
+    }
+
     void stop(int index = -1){
         if(index == -1){
             for(auto& pipeline: pipelines){

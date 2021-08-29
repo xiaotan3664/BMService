@@ -65,7 +65,9 @@ struct RunnerInfo {
 std::map<unsigned int, std::shared_ptr<RunnerInfo>> globalRunnerInfos;
 
 bool preProcess(const InputType& input, const TensorVec& inTensors, ContextPtr ctx){
-    if(input.num == 0) return false;
+    if(input.num == 0){
+        return false;
+    }
     BM_ASSERT_EQ(input.num, inTensors.size());
     for(size_t i=0; i<input.num; i++){
         size_t in_mem_size = elem_num(input.tensors[i].shape, input.tensors[i].dims) * dtype_len(input.tensors[i].dtype);
@@ -107,6 +109,7 @@ bool postProcess(const InputType& input, const TensorVec& outTensors, OutputType
 }
 
 unsigned int runner_start(const char *bmodel) {
+    set_env_log_level();
     unsigned int runner_id = 0;
     while(globalRunnerInfos.count(runner_id)) runner_id++;
     globalRunnerInfos[runner_id] = std::make_shared<RunnerInfo>(bmodel);
@@ -152,7 +155,7 @@ unsigned int runner_put_input(unsigned runner_id, unsigned int input_num, const 
 }
 
 
-bool runner_all_stopped(size_t runner_id){
+int runner_all_stopped(size_t runner_id){
     if(!globalRunnerInfos.count(runner_id)) return true;
     return globalRunnerInfos[runner_id]->runner.allStopped();
 }
@@ -196,4 +199,10 @@ unsigned int runner_release_output(unsigned int output_num, const tensor_data_t 
         delete [] output_data[i].data;
     }
     delete []output_data;
+}
+
+int runner_empty(unsigned int runner_id)
+{
+    if(!globalRunnerInfos.count(runner_id)) return true;
+    return globalRunnerInfos[runner_id]->runner.empty();
 }
