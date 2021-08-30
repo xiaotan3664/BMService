@@ -1,6 +1,8 @@
 import os
 import ctypes as ct
 import numpy as np
+import time
+import threading
 
 BMTypeTuple = (
    (np.float32, 0),
@@ -78,6 +80,51 @@ class BMService:
     def empty(self):
         return self.__lib.runner_empty(self.runner_id)
 
+    def infer_all(self, samples, key_func=None, out_func=None, in_func=None):
+        self.map_lock = threading.Lock()
+        self.finish_cond = threading.Condition()
+        self.task_map = {}
+        self.sample_index = {}
+        self.out_func = out_func
+        self.no_more_data = False
+        self.wait_thread = threading.Thread(target=self.__wait_result)
+        self.wait_thread.start()
+        for i, sample in enumerate(samples):
+            sample_id = key_func(i, sample) if key_func else i
+            if in_func is not None:
+                sample = in_func(sample)
+            task_id = self.put(*sample)
+            self.map_lock.acquire()
+            self.sample_index[sample_id] = len(self.task_map)
+            self.task_map[task_id] = sample_id
+            self.map_lock.release()
+        self.no_more_data = True
+        self.wait_thread.join()
+        return self.final_outputs
+
+    def __wait_result(self):
+        cached_outputs = []
+        while True:
+            task_id, outputs, valid = self.try_get()
+            if task_id == 0:
+                time.sleep(0.0001)
+                continue
+            self.map_lock.acquire()
+            sample_id = self.task_map[task_id]
+            del self.task_map[task_id]
+            finished = len(self.task_map) == 0 and self.no_more_data
+            self.map_lock.release()
+
+            if self.out_func is not None:
+                outputs = self.__out_func(sample_id, outputs)
+            cached_outputs.append((sample_id, outputs))
+            if finished:
+                break
+        self.final_outputs = [None]*len(cached_outputs)
+        for id, out in cached_outputs:
+            self.final_outputs[self.sample_index[id]] = out
+
+
     def __get(self, func):
         output_num= ct.c_uint32(0)
         task_id = ct.c_uint32(0)
@@ -94,12 +141,16 @@ class BMService:
         self.__lib.runner_release_output(output_num, output_tensors)
         return task_id.value, outputs, True
 
-    def inference(self, *inputs):
+    def infer_one(self, *inputs):
         in_task_id = self.put(*inputs)
         out_task_id, outputs, valid = self.get()
         assert in_task_id == out_task_id
         return outputs, valid
 
+    def wait_to_stop(self):
+        while not self.stopped():
+            self.put()
+            time.sleep(0.001)
 
     def show(self):
         self.__lib.runner_show_status(self.runner_id)
@@ -119,4 +170,5 @@ if __name__ == "__main__":
 
     i = np.arange(1*3*20*20).astype(np.float32).reshape(1,3,20,20)
     print(i)
-    print(s.inference(i))
+    print(s.infer_one(i))
+    print(s.infer_all([i]*3))
