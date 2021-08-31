@@ -181,8 +181,8 @@ bool yoloV3BoxParse(DetectBox& box, float* data, size_t len, float probThresh, C
 }
 
 bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& postOut, ContextPtr ctx){
-    if(rawIn.empty()) return true;
     postOut.rawIns = rawIn;
+    if(rawIn.empty()) return false;
     auto pCfg = (YOLOv3Config*)ctx->getConfigData();
     auto& cfg = *pCfg;
 

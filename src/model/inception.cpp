@@ -110,8 +110,9 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
 }
 
 bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& postOut, ContextPtr ctx){
-    const size_t K=5;
     postOut.rawIns = rawIn;
+    if(rawIn.empty()) return false;
+    const size_t K=5;
     auto outTensor = outTensors[0];
     size_t batch = rawIn.size();
     float* data = outTensor->get_float_data();

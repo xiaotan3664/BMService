@@ -14,7 +14,7 @@
 #include "bmcv_api.h"
 
 using namespace bm;
-#define OUTPUT_DIR "out"
+#define OUTPUT_DIR "ssd_resnet34_out"
 #define OUTPUT_IMAGE_DIR  OUTPUT_DIR "/images"
 #define OUTPUT_PREDICTION_DIR  OUTPUT_DIR "/prediction"
 #define OUTPUT_GROUND_TRUTH_DIR OUTPUT_DIR "/groundtruth"
@@ -293,22 +293,21 @@ std::vector<DetectBox> decodeBoxes(size_t batch, const float* rawBoxData,
     for(size_t b=0; b<batch; b++){
         auto boxOffset = b*boxNum;
         auto boxData = rawBoxData + b*4*boxNum;
-        auto dataOffset = b*4*boxNum;
         // consider cpu cache
-        auto locOffset = 0 * boxNum + dataOffset;
+        auto locOffset = 0 * boxNum;
         for(size_t i=0; i<boxNum; i++){
             // decode location
             boxes[boxOffset+i].xmin = (boxData[locOffset+i] * anchorBox[i].w* priorScales[0] + anchorBox[i].cx);
         }
-        locOffset = 1 * boxNum + dataOffset;
+        locOffset = 1 * boxNum;
         for(size_t i=0; i<boxNum; i++){
             boxes[boxOffset+i].ymin = (boxData[locOffset+i] * anchorBox[i].h* priorScales[1] + anchorBox[i].cy);
         }
-        locOffset = 2 * boxNum + dataOffset;
+        locOffset = 2 * boxNum;
         for(size_t i=0; i<boxNum; i++){
             boxes[boxOffset+i].xmax = exp(boxData[locOffset+i] * priorScales[2]) * anchorBox[i].w;
         }
-        locOffset = 3 * boxNum + dataOffset;
+        locOffset = 3 * boxNum;
         for(size_t i=0; i<boxNum; i++){
             boxes[boxOffset+i].ymax = exp(boxData[locOffset+i] * priorScales[3]) * anchorBox[i].h;
         }
@@ -356,6 +355,7 @@ std::vector<std::vector<DetectBox>> batchSortBoxes(const std::vector<std::vector
 
 bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& postOut, ContextPtr ctx){
     postOut.rawIns = rawIn;
+    if(rawIn.empty()) return false;
     auto pCfg = (SSDResnet34Config*)ctx->getConfigData();
     auto& cfg = *pCfg;
     BM_ASSERT_EQ(outTensors.size(),2);
