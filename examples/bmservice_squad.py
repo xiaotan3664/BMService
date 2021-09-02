@@ -31,7 +31,6 @@ def main():
   runner = bmservice.BMService(bmodel_path)
   finished = False
   
-  eval_examples = eval_examples[0:3]
   batch_input_ids = []
   batch_input_mask = []
   batch_segment_ids = []
