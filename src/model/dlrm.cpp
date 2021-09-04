@@ -125,7 +125,7 @@ bool resultProcess(const DLRMOutput& out, std::vector<std::pair<unsigned int, fl
 }
 
 int main(int argc, char** argv){
-    set_log_level(INFO);
+    set_env_log_level(INFO);
     std::string topDir = "../";
     std::string dataPath =topDir + "data/criteo/";
     std::string bmodel = topDir + "models/dlrm/fp32.bmodel";
@@ -135,7 +135,7 @@ int main(int argc, char** argv){
     RunnerType runner(bmodel, preProcess, postProcess);
     runner.start();
     size_t batchSize= runner.getBatchSize();
-    ProcessStatInfo info("squad-bert");
+    ProcessStatInfo info(bmodel);
     std::thread dataThread([dataPath, batchSize, &runner](){
         forEachFile(dataPath, [&runner, batchSize](const std::string& filename){
             std::ifstream ifs(filename);

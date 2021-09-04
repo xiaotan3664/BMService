@@ -119,4 +119,70 @@ BMDeviceContext::~BMDeviceContext() {
     bm_dev_free(handle);
 }
 
+void ProcessStatInfo::update(const std::shared_ptr<ProcessStatus> &status, size_t batch) {
+    if(status->valid){
+        numSamples += batch;
+        totalDuration += status->totalDuration();
+        for(size_t i = durations.size(); i<status->starts.size(); i++){
+            durations.push_back(0);
+        }
+        for(size_t i=0; i<status->starts.size(); i++){
+            durations[i] += usBetween(status->starts[i], status->ends[i]);
+        }
+        deviceProcessNum[status->deviceId] += batch;
+    }
+}
+
+void ProcessStatInfo::show() {
+    auto end = std::chrono::steady_clock::now();
+    auto totalUs = usBetween(start, end);
+    BMLOG(INFO, "For model '%s'", name.c_str());
+    BMLOG(INFO, "  num_sample=%d: total_time=%gms, avg_time=%gms, speed=%g samples/sec",
+          numSamples, totalUs/1000.0, (float)totalUs/1000.0/numSamples,
+          numSamples*1e6/totalUs);
+    //        BMLOG(INFO, "            serialized_time=%gms, avg_serialized_time=%gms", totalDuration/1000.0, (float)totalDuration/1000.0/numSamples);
+
+    BMLOG(INFO, "Samples process stat:");
+    for(auto& p: deviceProcessNum){
+        BMLOG(INFO, "  -> device #%d processes %d samples", p.first, p.second);
+    }
+    BMLOG(INFO, "Average per device:");
+    for(size_t i=0; i<durations.size(); i++){
+        BMLOG(INFO, "  -> %s total_time=%gms, avg_time=%gms",
+              __phaseMap[i],
+              durations[i]/1000.0, durations[i]/1000.0/numSamples);
+    }
+}
+
+void ProcessStatus::reset(){
+    starts.clear();
+    ends.clear();
+    valid = false;
+}
+
+void ProcessStatus::start(){
+    starts.push_back(std::chrono::steady_clock::now());
+    ends.push_back(starts.back());
+}
+
+void ProcessStatus::end(){
+    ends.back() = std::chrono::steady_clock::now();
+}
+
+void ProcessStatus::show() {
+    BMLOG(INFO, "device_id=%d, valid=%d, total=%dus", deviceId, valid, totalDuration());
+    for(size_t i=0; i<starts.size(); i++){
+        auto startStr = steadyToString(starts[i]);
+        auto endStr = steadyToString(ends[i]);
+        BMLOG(INFO, "  -> %s: duration=%dus",
+              __phaseMap[i],
+              usBetween(starts[i], ends[i]),
+              startStr.c_str(), endStr.c_str());
+    }
+}
+
+size_t ProcessStatus::totalDuration() const {
+    return usBetween(starts.front(), ends.back());
+}
+
 }

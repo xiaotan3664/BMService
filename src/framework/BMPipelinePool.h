@@ -40,11 +40,12 @@ private:
     OutQueuePtr outTaskQueue;
     std::thread innerThread;
     std::atomic_bool& done;
+    std::string name;
 
     void workThread(){
         if(!inTaskQueue) {
             done = true;
-            BMLOG(FATAL, "[%d] no input task queue!", std::this_thread::get_id());
+            BMLOG(FATAL, "[%s] no input task queue!", name.c_str());
             return;
         }
         while(!done){
@@ -52,7 +53,7 @@ private:
             InType in;
             while(!done && outFreeQueue) {
                 if(outFreeQueue->tryPop(out)) {
-                    BMLOG(DEBUG, "[%d] got an output resource", std::this_thread::get_id());
+                    BMLOG(DEBUG, "[%s] got an output resource", name.c_str());
                     break;
                 }
                 std::this_thread::yield();
@@ -61,7 +62,7 @@ private:
             while(!done && !finish){
                 while(!done) {
                     if(inTaskQueue->tryPop(in)) {
-                        BMLOG(DEBUG, "[%d] got a task", std::this_thread::get_id());
+                        BMLOG(DEBUG, "[%s] got a task", name.c_str());
                         break;
                     }
                     std::this_thread::yield();
@@ -70,7 +71,7 @@ private:
                     if(!done){
                         finish = taskFunc(in, out, context);
                         if(inFreeQueue) {
-                            BMLOG(DEBUG, "[%d] return an input resource", std::this_thread::get_id());
+                            BMLOG(DEBUG, "[%s] return an input resource", name.c_str());
                             inFreeQueue->push(in);
                         }
                     } else {
@@ -82,12 +83,12 @@ private:
             }
             if(!done){
                 if(outTaskQueue) {
-                    BMLOG(DEBUG, "[%d] put a task", std::this_thread::get_id());
+                    BMLOG(DEBUG, "[%s] put a task", name.c_str());
                     outTaskQueue->push(out);
                 }
             }
         }
-        BMLOG(DEBUG, "[%d] leave thread", std::this_thread::get_id());
+        BMLOG(DEBUG, "[%s] leave thread", name.c_str());
     }
 
 public:
@@ -95,13 +96,14 @@ public:
                       InQueuePtr inFreeQueue, InQueuePtr inTaskQueue,
                       OutQueuePtr outFreeQueue, OutQueuePtr outTaskQueue,
                       std::atomic_bool& done,
-                      std::shared_ptr<ContextType> context
+                      std::shared_ptr<ContextType> context,
+                      const std::string& name
                       ):
         taskFunc(taskFunc),
         inFreeQueue(inFreeQueue), inTaskQueue(inTaskQueue),
         outFreeQueue(outFreeQueue), outTaskQueue(outTaskQueue),
         done(done),
-        context(context)
+        context(context), name(name)
     {}
 
     virtual void setOutQueue(std::shared_ptr<BMQueueVoid> outQueueVoid) override {
@@ -140,11 +142,13 @@ private:
     std::shared_ptr<BMQueueVoid> lastOutWorkQueue;
     std::string lastTypeName;
     std::string outTypeName;
+    std::string pipelineName;
 
 public:
-    BMPipeline(std::shared_ptr<ContextType> context = std::shared_ptr<ContextType>()):
+    BMPipeline(std::shared_ptr<ContextType> context = std::shared_ptr<ContextType>(), const std::string& name="node"):
         context(context),
-        done(false)
+        done(false),
+        pipelineName(name)
     {
         setInputQueue(std::make_shared<BMQueue<InType>>());
         lastOutResourceQueue = std::shared_ptr<BMQueue<InType>>();
@@ -223,11 +227,12 @@ public:
         for(auto& out: outResource){
             outResourceQueue->push(out);
         }
+        std::string nodeName = pipelineName+"_n" + std::to_string(pipelineNodes.size());
         pipelineNodes.emplace_back(
                     new BMPipelineNodeImp<NodeInType, NodeOutType, ContextType>(func,
                                                                                 inResourceQueue, inWorkQueue,
                                                                                 outResourceQueue, outWorkQueue,
-                                                                                done, context)
+                                                                                done, context, nodeName)
                     );
     }
 
@@ -290,7 +295,8 @@ private:
 public:
    BMPipelinePool(size_t num_pipeline = 1,
                   std::function<std::shared_ptr<ContextType>(size_t)> contextInitializer = nullptr,
-                  std::function<void(std::shared_ptr<ContextType>)> contextDeinitializer = nullptr
+                  std::function<void(std::shared_ptr<ContextType>)> contextDeinitializer = nullptr,
+                  std::function<std::string(size_t)> nameFunc = nullptr
                   ) {
        inQueue = std::make_shared<BMQueue<InType>>();
        outQueue = std::make_shared<BMQueue<OutType>>();
@@ -299,7 +305,11 @@ public:
            if(contextInitializer){
                context = contextInitializer(i);
            }
-           pipelines.emplace_back(new BMPipeline<InType, OutType, ContextType>(context));
+           std::string pipelineName = std::string("pipeline") + std::to_string(i);
+           if(nameFunc){
+               pipelineName = nameFunc(i);
+           }
+           pipelines.emplace_back(new BMPipeline<InType, OutType, ContextType>(context, pipelineName));
        }
        for(auto& pipeline: pipelines){
            pipeline->setInputQueue(inQueue);

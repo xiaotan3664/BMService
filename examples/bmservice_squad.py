@@ -8,9 +8,7 @@ import threading
 import time
 
 
-bmodel_path = "/home/longli/tingliangtan/BMService/models/bert_squad/fp32_b8.bmodel"
 vocab_file = "uncased_L-12_H-768_A-12/vocab.txt"
-input_file = "squad/dev-v1.1.json"
 output_dir = "squad_eval_out"
 max_seq_length = 384
 doc_stride = 128
@@ -18,13 +16,15 @@ max_query_length = 64
 do_lower_case = True
 n_best_size = 20
 max_answer_length=30
-max_batch = 8
+max_batch = 1
 
-def main():
+def main(input_file, bmodel_path, test_num):
   if not os.path.exists(output_dir):
     os.mkdir(output_dir)
   tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file, do_lower_case=do_lower_case)
   eval_examples = read_squad_examples(input_file, False)
+  if test_num>0:
+    eval_examples = eval_examples[0:test_num]
   eval_features = []
   id_maps = {}
   id_maps_lock = threading.Lock()
@@ -104,7 +104,6 @@ def main():
       start_logit = [float(x) for x in start_logits[b,:].flat]
       end_logit = [float(x) for x in end_logits[b,:].flat]
       eval_results.append(RawResult(unique_id, start_logit, end_logit))
-  print(runner.stopped(), runner.empty())
 
   runner.show()
   input_thread.join()
@@ -118,4 +117,15 @@ def main():
                         output_nbest_file, output_null_log_odds_file)
 
 if __name__ == "__main__":
-  main()
+  global bmodel_path 
+  global input_file
+  bmodel_path = "/home/longli/tingliangtan/BMService/models/bert_squad/fp32.bmodel"
+  input_file = "squad/dev-v1.1.json"
+  test_num = -1
+  if len(sys.argv)>1:
+    input_file = sys.argv[1]
+  if len(sys.argv)>2:
+    bmodel_path = sys.argv[2]
+  if len(sys.argv)>3:
+    test_num = int(sys.argv[3])
+  main(input_file, bmodel_path, test_num)

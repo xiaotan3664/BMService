@@ -291,7 +291,7 @@ bool resultProcess(const PostOutType& out){
     return true;
 }
 int main(int argc, char* argv[]){
-    set_log_level(INFO);
+    set_env_log_level(INFO);
     std::string topDir = "../";
     std::string dataPath = topDir + "data/coco/images";
     std::string bmodel = topDir + "models/yolov3/fp32.bmodel";
@@ -313,7 +313,7 @@ int main(int argc, char* argv[]){
     BMDevicePool<InType, PostOutType> runner(bmodel, preProcess, postProcess);
     runner.start();
     size_t batchSize= runner.getBatchSize();
-    ProcessStatInfo info("yolov3");
+    ProcessStatInfo info(bmodel);
     std::thread dataThread([dataPath, batchSize, &runner](){
         forEachBatch(dataPath, batchSize, [&runner](const std::vector<std::string> names){
             return runner.push(names);

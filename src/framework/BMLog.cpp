@@ -22,13 +22,13 @@ struct __log_initializer{
 };
 static __log_initializer __log_init();
 
-void set_env_log_level()
+void set_env_log_level(LogLevel level)
 {
     auto level_cstr = getenv(BM_LOG_LEVEL);
     if(level_cstr){
-        LogLevel level = (LogLevel)atoi(level_cstr);
-        set_log_level(level);
+        level = (LogLevel)atoi(level_cstr);
     }
+    set_log_level(level);
 }
 
 }

@@ -26,7 +26,7 @@ typename std::enable_if<level<FATAL , void>::type __bm_log(const char*fmt, ArgTy
         fflush(stdout);
     }
 }
-void set_env_log_level();
+void set_env_log_level(LogLevel level=LogLevel::INFO);
 
 template<int level, typename ... ArgTypes>
 typename std::enable_if<level==FATAL , void>::type __bm_log(const char* fmt, ArgTypes ...args){

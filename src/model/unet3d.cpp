@@ -96,7 +96,7 @@ bool resultProcess(const PostOutType& out){
 
 
 int main(int argc, char* argv[]){
-    set_log_level(INFO);
+    set_env_log_level(INFO);
     std::string topDir = "../";
     std::string dataPath = topDir + "data/preprocessed_data";
     std::string bmodel = topDir + "models/unet3d/fp32.bmodel";
@@ -107,7 +107,7 @@ int main(int argc, char* argv[]){
     BMDevicePool<InType, PostOutType> runner(bmodel, preProcess, postProcess);
     runner.start();
     size_t batchSize= runner.getBatchSize();
-    ProcessStatInfo info("unet3d");
+    ProcessStatInfo info(bmodel);
     std::thread dataThread([dataPath, batchSize, &runner](){
         forEachBatch(dataPath, batchSize, [&runner](const InType& imageFiles){
             return runner.push(imageFiles);

@@ -163,7 +163,7 @@ bool resultProcess(const PostOutType& out, Top5AccuracyStat& stat,
 
 
 int main(int argc, char* argv[]){
-    set_log_level(INFO);
+    set_env_log_level(INFO);
     std::string topDir = "../";
     std::string dataPath = topDir + "data/ILSVRC2012/images";
     std::string bmodel = topDir + "models/inception/fp32.bmodel";
@@ -178,7 +178,7 @@ int main(int argc, char* argv[]){
     size_t batchSize= runner.getBatchSize();
     auto refMap = loadClassRefs(refFile, "");
     auto labelMap = loadLabels(labelFile);
-    ProcessStatInfo info("inception");
+    ProcessStatInfo info(bmodel);
     Top5AccuracyStat topStat;
     std::thread dataThread([dataPath, batchSize, &runner](){
         forEachBatch(dataPath, batchSize, [&runner](const InType& imageFiles){

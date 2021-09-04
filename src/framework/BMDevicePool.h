@@ -90,35 +90,12 @@ struct ProcessStatus {
     bool valid;
     std::vector<std::chrono::steady_clock::time_point> starts;
     std::vector<std::chrono::steady_clock::time_point> ends;
-    void reset(){
-        starts.clear();
-        ends.clear();
-        valid = false;
-    }
-    void start(){
-        starts.push_back(std::chrono::steady_clock::now());
-        ends.push_back(starts.back());
-    }
-    void end(){
-        ends.back() = std::chrono::steady_clock::now();
-    }
-    void show() {
-        BMLOG(INFO, "device_id=%d, valid=%d, total=%dus", deviceId, valid, totalDuration());
-        for(size_t i=0; i<starts.size(); i++){
-            auto startStr = steadyToString(starts[i]);
-            auto endStr = steadyToString(ends[i]);
-            BMLOG(INFO, "  -> %s: duration=%dus",
-                  __phaseMap[i],
-                  usBetween(starts[i], ends[i]),
-                  startStr.c_str(), endStr.c_str());
-        }
-    }
-    size_t totalDuration() const {
-        return usBetween(starts.front(), ends.back());
-    }
+    void reset();
+    void start();
+    void end();
+    void show();
+    size_t totalDuration() const;
 
-    void increaseDuration(std::vector<size_t>& durations) {
-    }
 };
 
 struct ProcessStatInfo {
@@ -129,37 +106,8 @@ struct ProcessStatInfo {
     std::string name;
     std::chrono::steady_clock::time_point start;
     ProcessStatInfo(const std::string& name): name(name), start(std::chrono::steady_clock::now()){ }
-    void update(const std::shared_ptr<ProcessStatus>& status, size_t batch=1) {
-        if(status->valid){
-            numSamples += batch;
-            totalDuration += status->totalDuration();
-            for(size_t i = durations.size(); i<status->starts.size(); i++){
-                durations.push_back(0);
-            }
-            for(size_t i=0; i<status->starts.size(); i++){
-                durations[i] += usBetween(status->starts[i], status->ends[i]);
-            }
-            deviceProcessNum[status->deviceId] += batch;
-        }
-    }
-
-    void show() {
-        auto end = std::chrono::steady_clock::now();
-        auto totalUs = usBetween(start, end);
-        BMLOG(INFO, "For model '%s'", name.c_str());
-        BMLOG(INFO, "samples=%d: real_time=%gms, avg_real_time=%gms, speed=%g samples/sec",
-              numSamples, totalUs/1000.0, (float)totalUs/1000.0/numSamples,
-              numSamples*1e6/totalUs);
-        BMLOG(INFO, "            serialized_time=%gms, avg_serialized_time=%gms", totalDuration/1000.0, (float)totalDuration/1000.0/numSamples);
-        for(size_t i=0; i<durations.size(); i++){
-            BMLOG(INFO, "  -> total %s duration=%gms, avg=%gms",
-                  __phaseMap[i],
-                  durations[i]/1000.0, durations[i]/1000.0/numSamples);
-        }
-        for(auto& p: deviceProcessNum){
-            BMLOG(INFO, "  -> device #%d processes %d samples", p.first, p.second);
-        }
-    }
+    void update(const std::shared_ptr<ProcessStatus>& status, size_t batch=1);
+    void show();
     ~ProcessStatInfo(){
     }
 };
@@ -210,13 +158,16 @@ public:
             deviceStr += std::to_string(id)+" ";
         }
         BMLOG(INFO, "USING DEVICES: %s", deviceStr.c_str());
-        std::function<std::shared_ptr<ContextType>(size_t)>  contextInitializer = [localDeviceIds, bmodel, this](size_t i) {
+        std::function<std::shared_ptr<ContextType>(size_t)>  contextInitializer = [&localDeviceIds, bmodel, this](size_t i) {
             auto context = std::make_shared<ContextType>(localDeviceIds[i], bmodel);
             this->atomicBatchSize=context->getBatchSize();
             return context;
         };
+        std::function<std::string(size_t)>  nameFunc  = [&localDeviceIds](size_t i) {
+            return "device"+ std::to_string(localDeviceIds[i]);
+        };
 
-        pool = std::make_shared<RunnerType>(deviceNum, contextInitializer);
+        pool = std::make_shared<RunnerType>(deviceNum, contextInitializer, nullptr, nameFunc);
 
         auto inQueue = pool->getInputQueue();
         inQueue->setMaxNode(deviceNum*4);

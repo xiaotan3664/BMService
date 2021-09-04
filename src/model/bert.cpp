@@ -330,7 +330,7 @@ bool resultProcess(const PostOutType& out, std::map<std::string, std::string>& i
 }
 
 int main(int argc, char** argv){
-    set_log_level(INFO);
+    set_env_log_level(INFO);
     std::string squadPath = "../data/squad/squad_data.txt";
     std::string squadModel = "../models/bert_squad/fp32.bmodel";
     std::string squadOutput = "prediction.json";
@@ -341,7 +341,7 @@ int main(int argc, char** argv){
     BMDevicePool<InType, PostOutType> runner(squadModel, preProcess, postProcess);
     runner.start();
     size_t batchSize= runner.getBatchSize();
-    ProcessStatInfo info("squad-bert");
+    ProcessStatInfo info(squadModel);
     std::thread dataThread([squadPath, batchSize, &runner](){
         parseSquadFile(squadPath, batchSize, [&runner](const std::vector<std::shared_ptr<SquadData>>& batchData){
             return runner.push(batchData);
