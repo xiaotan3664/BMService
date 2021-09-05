@@ -81,12 +81,14 @@ class BMService:
         return self.__lib.runner_empty(self.runner_id)
 
     def infer_all(self, samples, key_func=None, out_func=None, in_func=None):
+        self.sample_count = len(samples)
+        if self.sample_count == 0:
+            return
         self.map_lock = threading.Lock()
         self.finish_cond = threading.Condition()
         self.task_map = {}
         self.sample_index = {}
         self.out_func = out_func
-        self.no_more_data = False
         self.wait_thread = threading.Thread(target=self.__wait_result)
         self.wait_thread.start()
         for i, sample in enumerate(samples):
@@ -98,28 +100,27 @@ class BMService:
             self.sample_index[sample_id] = len(self.task_map)
             self.task_map[task_id] = sample_id
             self.map_lock.release()
-        self.no_more_data = True
         self.wait_thread.join()
         return self.final_outputs
 
     def __wait_result(self):
         cached_outputs = []
-        while True:
+        while self.sample_count>0:
             task_id, outputs, valid = self.try_get()
             if task_id == 0:
                 time.sleep(0.0001)
                 continue
+
             self.map_lock.acquire()
             sample_id = self.task_map[task_id]
             del self.task_map[task_id]
-            finished = len(self.task_map) == 0 and self.no_more_data
             self.map_lock.release()
 
             if self.out_func is not None:
-                outputs = self.__out_func(sample_id, outputs)
+                outputs = self.out_func(sample_id, outputs)
             cached_outputs.append((sample_id, outputs))
-            if finished:
-                break
+            self.sample_count -= 1
+
         self.final_outputs = [None]*len(cached_outputs)
         for id, out in cached_outputs:
             self.final_outputs[self.sample_index[id]] = out
@@ -150,7 +151,7 @@ class BMService:
     def wait_to_stop(self):
         while not self.stopped():
             self.put()
-            time.sleep(0.001)
+            time.sleep(0.01)
 
     def show(self):
         self.__lib.runner_show_status(self.runner_id)
@@ -172,3 +173,4 @@ if __name__ == "__main__":
     print(i)
     print(s.infer_one(i))
     print(s.infer_all([i]*3))
+    print(s.infer_all([i]*4))
