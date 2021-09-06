@@ -135,7 +135,7 @@ struct SSDResnet34Config {
             iouThreshold = 0.5;
         } else {
             netDtype = DATA_TYPE_EXT_1N_BYTE_SIGNED;
-            probThreshold = 0.5;
+            probThreshold = 0.35;
             iouThreshold = 0.5;
             input_scale = inTensor->get_scale();
         }
@@ -361,23 +361,29 @@ bool postProcess(const InType& rawIn, const TensorVec& outTensors, PostOutType& 
     BM_ASSERT_EQ(outTensors.size(),2);
 
     auto pInputImages = reinterpret_cast<std::vector<bm_image>*>(ctx->getPostExtra());
-    size_t batch =    outTensors[0]->shape(0);
-    size_t classNum = outTensors[0]->shape(1);
-    size_t boxNum =   outTensors[0]->shape(2);
-    BM_ASSERT_EQ(outTensors[1]->shape(0), batch);
-    BM_ASSERT_EQ(outTensors[1]->shape(1), 4);
-    BM_ASSERT_EQ(outTensors[1]->shape(2), boxNum);
+    auto boxTensor = outTensors[0];
+    auto scoreTensor = outTensors[1];
+    if(boxTensor->shape(1) != 4){
+        std::swap(boxTensor, scoreTensor);
+    }
+
+    size_t batch =    scoreTensor->shape(0);
+    size_t classNum = scoreTensor->shape(1);
+    size_t boxNum =   scoreTensor->shape(2);
+    BM_ASSERT_EQ(boxTensor->shape(0), batch);
+    BM_ASSERT_EQ(boxTensor->shape(1), 4);
+    BM_ASSERT_EQ(boxTensor->shape(2), boxNum);
 
     // [batch, classNum, boxNum]
-    auto scoreData = outTensors[0]->get_float_data();
+    auto scoreData = scoreTensor->get_float_data();
     // [batch, 4, boxNum]
-    auto rawBoxData = outTensors[1]->get_float_data();
+    auto rawBoxData = boxTensor->get_float_data();
 
     // decode boxes to [0, 1]
     auto boxes = decodeBoxes(batch, rawBoxData, cfg.priorBoxes, cfg.priorScales);
 
     // softmax scores
-    auto scoreShape = outTensors[0]->get_shape();
+    auto scoreShape = scoreTensor->get_shape();
     softmax(scoreData, scoreShape->dims, scoreShape->num_dims, 1);
 
     auto classifiedBoxes = selectBoxes(boxes, scoreData, batch, classNum, boxNum, cfg.probThreshold);
