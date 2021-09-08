@@ -26,7 +26,21 @@ bool DetectBox::isValid(float width, float height) const
     return !(xmin >= xmax ||
             ymin >= ymax ||
             xmin<0 || xmax >= width ||
-            ymin<0 || ymax >= height);
+             ymin<0 || ymax >= height);
+}
+
+std::string DetectBox::json() const
+{
+    std::string s = "{";
+    s+= "\"image_id\":" + std::to_string(imageId) +",";
+    s+= "\"category_id\":" + std::to_string(category) +",";
+    s+= "\"score\":" + std::to_string(confidence) +",";
+    s+= "\"bbox\": ["
+            + std::to_string(xmin) +","
+            + std::to_string(ymin) +","
+            + std::to_string(xmax-xmin) +","
+            + std::to_string(ymax-ymin) +"]}";
+    return s;
 }
 
 std::vector<std::vector<DetectBox> > batchNMS(const std::vector<std::vector<DetectBox> > &batchInfo, float iouThresh, size_t topk, bool useSoftNms, float sigma){
@@ -111,6 +125,7 @@ std::map<std::string, std::vector<DetectBox> > readCocoDatasetBBox(const std::st
         box.xmax = box.xmin + bbox.get<Number>(2);
         box.ymax = box.ymin + bbox.get<Number>(3);
         imageToBoxes[idToName[imageId]].push_back(box);
+        box.imageId = imageId;
     }
     BMLOG(INFO, "Parsing annotation %s done", cocoAnnotationFile.c_str());
     return imageToBoxes;
@@ -196,5 +211,59 @@ std::ostream& operator<<(std::ostream &os, const DetectBox &box){
     return os;
 }
 
+void readCocoDatasetInfo(const std::string &cocoAnnotationFile, std::map<std::string, size_t>& nameToId, std::map<std::string, size_t> &nameToCategory)
+{
+    BMLOG(INFO, "Parsing annotation %s", cocoAnnotationFile.c_str());
+    std::ifstream ifs(cocoAnnotationFile);
+    Object coco;
+    coco.parse(ifs);
+    auto& images = coco.get<Array>("images");
+    auto& annotations = coco.get<Array>("annotations");
+    for(size_t i=0; i<images.size(); i++){
+        auto& image = images.get<Object>(i);
+        auto filename = image.get<std::string>("file_name");
+        size_t id = image.get<Number>("id");
+        nameToId[filename] = id;
+    }
+    auto& categories = coco.get<Array>("categories");
+    for(size_t i=0; i<categories.size(); i++){
+        auto& category = categories.get<Object>(i);
+        size_t id = category.get<Number>("id");
+        auto name = category.get<std::string>("name");
+        nameToCategory[name]=id;
+        BMLOG(INFO, "%d: %s", id, name.c_str());
+    }
+    BMLOG(INFO, "Parsing annotation %s done", cocoAnnotationFile.c_str());
+}
+
+void saveCocoResults(const std::vector<DetectBox> &results, const std::string& filename)
+{
+    std::ofstream ofs(filename);
+    ofs<<"["<<std::endl;
+    for(size_t i=0; i<results.size()-1; i++){
+        ofs<<results[i].json()<<","<<std::endl;
+    }
+    ofs<<results[results.size()-1].json()<<std::endl;
+    ofs<<"]";
+}
+
+std::map<std::string, size_t> readCocoDatasetImageIdMap(const std::string &cocoAnnotationFile)
+{
+    BMLOG(INFO, "Parsing annotation %s", cocoAnnotationFile.c_str());
+    std::ifstream ifs(cocoAnnotationFile);
+    Object coco;
+    coco.parse(ifs);
+    std::map<std::string, size_t> nameToId;
+    auto& images = coco.get<Array>("images");
+    auto& annotations = coco.get<Array>("annotations");
+    for(size_t i=0; i<images.size(); i++){
+        auto& image = images.get<Object>(i);
+        auto filename = image.get<std::string>("file_name");
+        size_t id = image.get<Number>("id");
+        nameToId[filename] = id;
+    }
+    BMLOG(INFO, "Parsing annotation %s done", cocoAnnotationFile.c_str());
+    return nameToId;
+}
 
 }

@@ -10,6 +10,7 @@
 namespace bm {
 
 struct DetectBox {
+    size_t imageId;
     size_t category;
     float xmin;
     float ymin;
@@ -25,6 +26,7 @@ struct DetectBox {
     bool operator > (const DetectBox& other) const {
         return confidence > other.confidence;
     }
+    std::string json() const;
 };
 
 
@@ -56,6 +58,9 @@ size_t argmax(
 }
 
 std::map<std::string, std::vector<DetectBox> > readCocoDatasetBBox(const std::string &cocoAnnotationFile);
+std::map<std::string, size_t> readCocoDatasetImageIdMap(const std::string &cocoAnnotationFile);
+void readCocoDatasetInfo(const std::string &cocoAnnotationFile, std::map<std::string, size_t> &nameToId, std::map<std::string, size_t>& nameToCategory);
+void saveCocoResults(const std::vector<DetectBox>& results, const std::string &filename);
 
 }
 
