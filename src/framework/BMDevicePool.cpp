@@ -133,9 +133,13 @@ void ProcessStatInfo::update(const std::shared_ptr<ProcessStatus> &status, size_
     }
 }
 
+void ProcessStatInfo::start() {
+    startTime=std::chrono::steady_clock::now();
+}
+
 void ProcessStatInfo::show() {
     auto end = std::chrono::steady_clock::now();
-    auto totalUs = usBetween(start, end);
+    auto totalUs = usBetween(startTime, end);
     BMLOG(INFO, "For model '%s'", name.c_str());
     BMLOG(INFO, "  num_sample=%d: total_time=%gms, avg_time=%gms, speed=%g samples/sec",
           numSamples, totalUs/1000.0, (float)totalUs/1000.0/numSamples,

@@ -104,10 +104,11 @@ struct ProcessStatInfo {
     std::map<size_t, size_t> deviceProcessNum;
     std::vector<size_t> durations;
     std::string name;
-    std::chrono::steady_clock::time_point start;
-    ProcessStatInfo(const std::string& name): name(name), start(std::chrono::steady_clock::now()){ }
+    std::chrono::steady_clock::time_point startTime;
+    ProcessStatInfo(const std::string& name): name(name), startTime(std::chrono::steady_clock::now()){ }
     void update(const std::shared_ptr<ProcessStatus>& status, size_t batch=1);
     void show();
+    void start();
     ~ProcessStatInfo(){
     }
 };

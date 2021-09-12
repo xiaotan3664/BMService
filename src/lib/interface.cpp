@@ -44,10 +44,11 @@ struct OutputType {
 bool preProcess(const InputType& input, const TensorVec& inTensors, ContextPtr ctx);
 bool postProcess(const InputType& input, const TensorVec& outTensors, OutputType& postOut, ContextPtr ctx);
 
+std::vector<DeviceId> globalDevices;
 using GeneralRunner = BMDevicePool<InputType, OutputType>;
 struct RunnerInfo {
     RunnerInfo(const char* bmodel):
-        task_id(INVALID_TASK_ID), runner(bmodel, preProcess, postProcess), status(bmodel) {
+        task_id(INVALID_TASK_ID), runner(bmodel, preProcess, postProcess, globalDevices), status(bmodel) {
         runner.start();
     }
     unsigned int nextId() {
@@ -205,4 +206,19 @@ int runner_empty(unsigned int runner_id)
 {
     if(!globalRunnerInfos.count(runner_id)) return true;
     return globalRunnerInfos[runner_id]->runner.empty();
+}
+
+void runner_use_devices(const unsigned *device_ids, unsigned num)
+{
+    globalDevices.assign(device_ids, device_ids+num);
+}
+
+unsigned int available_devices(unsigned int *devices, unsigned int maxNum)
+{
+    auto deviceIds = getAvailableDevices();
+    unsigned int realNum = maxNum>deviceIds.size()?deviceIds.size(): maxNum;
+    for(size_t i =0; i<realNum; i++){
+        devices[i] = deviceIds[i];
+    }
+    return realNum;
 }

@@ -51,11 +51,32 @@ class BMTensor(ct.Structure):
         self.data = data.ctypes.data_as(ct.c_void_p)
 
 class BMService:
-    def __init__(self, bmodel_path):
+    __lib = None
+     
+    def __init__(self, bmodel_path, devices=None):
         self.bmodel_path = bmodel_path
-        self.lib_path = os.path.join(os.path.dirname(__file__), "lib/libbmservice.so")
-        self.__lib = ct.cdll.LoadLibrary(self.lib_path)
+        if self.__class__.__lib is None:
+            lib_path = os.path.join(os.path.dirname(__file__), "lib/libbmservice.so")
+            self.__class__.__lib = ct.cdll.LoadLibrary(lib_path)
+        self.__lib = self.__class__.__lib
+        if devices is not None:
+            device_ids = (ct.c_int*len(devices))(*devices)
+            device_num = ct.c_int(len(devices))
+            self.__lib.runner_use_devices(device_ids, device_num)
         self.runner_id = self.__lib.runner_start(ct.c_char_p(bytes(bmodel_path, encoding='utf-8')))
+        if devices is not None:
+            device_num = ct.c_int(0)
+            self.__lib.runner_use_devices(device_ids, device_num)
+
+    @classmethod
+    def available_devices(cls):
+        if cls.__lib is None:
+            lib_path = os.path.join(os.path.dirname(__file__), "lib/libbmservice.so")
+            cls.__lib = ct.cdll.LoadLibrary(lib_path)
+        max_num = ct.c_int(1024);
+        devices = (ct.c_int*max_num.value)()
+        real_num = cls.__lib.available_devices(devices, max_num)
+        return tuple(devices[i] for i in range(real_num))
 
     def __del__(self):
         self.__lib.runner_stop(self.runner_id)
@@ -167,10 +188,12 @@ if __name__ == "__main__":
     print(n)
     print(nn)
     bmodel_path = os.path.join(os.path.dirname(__file__), "test_model/compilation.bmodel")
+    print("devices=",BMService.available_devices())
     s = BMService(bmodel_path)
-
     i = np.arange(1*3*20*20).astype(np.float32).reshape(1,3,20,20)
     print(i)
     print(s.infer_one(i))
     print(s.infer_all([i]*3))
     print(s.infer_all([i]*4))
+    s2 = BMService(bmodel_path, (0,))
+    print(s2.infer_one(i))

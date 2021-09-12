@@ -231,7 +231,7 @@ void readCocoDatasetInfo(const std::string &cocoAnnotationFile, std::map<std::st
         size_t id = category.get<Number>("id");
         auto name = category.get<std::string>("name");
         nameToCategory[name]=id;
-        BMLOG(INFO, "%d: %s", id, name.c_str());
+//        BMLOG(INFO, "%d: %s", id, name.c_str());
     }
     BMLOG(INFO, "Parsing annotation %s done", cocoAnnotationFile.c_str());
 }
