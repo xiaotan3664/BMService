@@ -41,7 +41,7 @@ class BMServiceSUT():
             del self.task_map[task_id]
             self.map_lock.release()
 
-            output = values[4]
+            output = values[-1]
             print("got result: task_id={:d} sample_id={:d} shape={}".format(task_id, sample_id, output.shape), flush=True)
             response_array = array.array("B", output.tobytes())
             bi = response_array.buffer_info()

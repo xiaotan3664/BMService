@@ -114,6 +114,7 @@ int BMNetwork::forward(TensorVec inTensors, TensorVec outTensors) {
                                   net_out_tensors, m_netinfo->output_num, user_mem, false);
 
     BM_ASSERT(ok, "bmrt_launch_tensor_ex failed");
+    bm_thread_sync(m_handle);
 
 #if 0
     for(int i = 0;i < m_netinfo->output_num; ++i) {

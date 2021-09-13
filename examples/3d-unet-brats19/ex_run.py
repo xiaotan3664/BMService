@@ -54,7 +54,7 @@ def get_args():
                         help="path to preprocessed data")
     parser.add_argument("--performance_count",
                         type=int,
-                        default=16,
+                        default=100,
                         help="performance count")
     args = parser.parse_args()
     return args

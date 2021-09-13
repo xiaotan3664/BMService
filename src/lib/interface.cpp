@@ -50,6 +50,7 @@ struct RunnerInfo {
     RunnerInfo(const char* bmodel):
         task_id(INVALID_TASK_ID), runner(bmodel, preProcess, postProcess, globalDevices), status(bmodel) {
         runner.start();
+        status.start();
     }
     unsigned int nextId() {
         task_id++;
