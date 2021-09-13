@@ -301,6 +301,7 @@ int main(int argc, char* argv[]){
     runner.start();
     size_t batchSize= runner.getBatchSize();
     ProcessStatInfo info(bmodel);
+    info.start();
     std::thread dataThread([dataPath, batchSize, &runner](){
         forEachBatch(dataPath, batchSize, [&runner](const std::vector<std::string> names){
             return runner.push(names);
