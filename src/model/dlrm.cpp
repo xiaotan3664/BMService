@@ -184,9 +184,17 @@ bool postProcess(const DLRMInput& inputs, const TensorVec& outTensors, DLRMOutpu
 bool resultProcess(const DLRMOutput& out, std::vector<std::pair<unsigned int, float>>& scores){
     if(out.inputs.empty()) return false;
     auto batch = out.inputs.size();
+    static size_t sample_count=0;
+    static size_t base_count=0;
     for(size_t i=0; i<batch; i++){
-        BMLOG(INFO, "target=%d, infer=%f", out.inputs[i].target, out.results[i]);
         scores.emplace_back(out.inputs[i].target, out.results[i]);
+        sample_count++;
+    }
+    if(sample_count>10000){
+        auto& score = scores.back();
+        base_count+= sample_count;
+        BMLOG(INFO, "%d: t=%d, i=%f", base_count, score.first, score.second);
+        sample_count = 0;
     }
     return true;
 }
