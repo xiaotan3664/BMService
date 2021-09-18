@@ -9,13 +9,13 @@ class DLRMRunner:
   def __init__(self, bmodel_path):
     self.bmodel_path = bmodel_path
     self.batch_num = 1024
-    self.print_interval = 10
+    self.print_interval = 20
 
   def run(self, data_path):
     self.load_data(data_path)
     self.left_count = self.num_samples
     import bmservice
-    self.runner = bmservice.BMService(self.bmodel_path)
+    self.runner = bmservice.BMService(self.bmodel_path, self.batch_num)
     self.y_score = np.zeros_like(self.y_true)
 
     self.task_map = {}
@@ -53,24 +53,24 @@ class DLRMRunner:
     int_fea_file = path.join(data_dir, "dlrm_test_int_fea.npy")
     cat_fea_file = path.join(data_dir, "dlrm_test_cat_fea.npy")
     y_file = path.join(data_dir, "dlrm_test_y.npy")
-    if path.exists(int_fea_file) and path.exists(cat_fea_file) and path.exists(y_file):
-      self.x_int = np.load(int_fea_file)
-      self.x_cat = np.load(cat_fea_file)
-      self.y_true = np.load(y_file)
-      self.num_samples = len(self.y_true)
-      print("find cached sample files, load directly!")
-      return
+    #if path.exists(int_fea_file) and path.exists(cat_fea_file) and path.exists(y_file):
+    #  self.x_int = np.load(int_fea_file)
+    #  self.x_cat = np.load(cat_fea_file)
+    #  self.y_true = np.load(y_file)
+    #  self.num_samples = len(self.y_true)
+    #  print("find cached sample files, load directly!")
+    #  return
     test_data = np.load(data_path)
     x_int, x_cat, y_true = test_data["X_int"], test_data["X_cat"], test_data["y"]
     self.num_samples = len(y_true)//2;
-    print("prepare samples: sample_num={}".format(self.num_samples))
+    print("prepare samples: sample_num={}".format(self.num_samples), flush=True)
     self.x_int = x_int[0:self.num_samples].astype(np.float32)
     self.x_cat = x_cat[0:self.num_samples].astype(np.int32)
     self.y_true = y_true[0:self.num_samples].astype(np.float32)
     np.save(int_fea_file, self.x_int)
     np.save(cat_fea_file, self.x_cat)
     np.save(y_file, self.y_true)
-    print("prepare done!")
+    print("prepare done!", flush=True)
 
   def feed_data(self):
     num_cat = self.x_cat[0].shape[0]
@@ -109,4 +109,4 @@ if __name__ == "__main__":
    y_score, y_true = runner.run(data_path)
    print("start to calculate AUC score...")
    auc_score = sklearn.metrics.roc_auc_score(y_true, y_score)
-   print("---> auc_score = {}".format(auc_score))
+   print("  ---> auc_score = {}".format(auc_score))

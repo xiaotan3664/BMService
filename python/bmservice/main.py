@@ -53,7 +53,7 @@ class BMTensor(ct.Structure):
 class BMService:
     __lib = None
      
-    def __init__(self, bmodel_path, devices=None):
+    def __init__(self, bmodel_path, batch=1, devices=None):
         self.bmodel_path = bmodel_path
         if self.__class__.__lib is None:
             lib_path = os.path.join(os.path.dirname(__file__), "lib/libbmservice.so")
@@ -63,7 +63,7 @@ class BMService:
             device_ids = (ct.c_int*len(devices))(*devices)
             device_num = ct.c_int(len(devices))
             self.__lib.runner_use_devices(device_ids, device_num)
-        self.runner_id = self.__lib.runner_start(ct.c_char_p(bytes(bmodel_path, encoding='utf-8')))
+        self.runner_id = self.__lib.runner_start_with_batch(ct.c_char_p(bytes(bmodel_path, encoding='utf-8')), batch)
         if devices is not None:
             device_num = ct.c_int(0)
             self.__lib.runner_use_devices(device_ids, device_num)
@@ -195,5 +195,5 @@ if __name__ == "__main__":
     print(s.infer_one(i))
     print(s.infer_all([i]*3))
     print(s.infer_all([i]*4))
-    s2 = BMService(bmodel_path, (0,))
+    s2 = BMService(bmodel_path, 1, (0,))
     print(s2.infer_one(i))

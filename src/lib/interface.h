@@ -26,6 +26,7 @@ struct tensor_data_t {
 
 unsigned int available_devices(unsigned int* devices, unsigned int maxNum);
 void runner_use_devices(const unsigned* device_ids, unsigned num);
+unsigned int runner_start_with_batch(const char *bmodel, unsigned int batch);
 unsigned int runner_start(const char* bmodel);
 void runner_stop(unsigned int runner_id);
 int runner_empty(unsigned int runner_id);

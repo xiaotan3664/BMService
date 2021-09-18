@@ -47,8 +47,8 @@ bool postProcess(const InputType& input, const TensorVec& outTensors, OutputType
 std::vector<DeviceId> globalDevices;
 using GeneralRunner = BMDevicePool<InputType, OutputType>;
 struct RunnerInfo {
-    RunnerInfo(const char* bmodel):
-        task_id(INVALID_TASK_ID), runner(bmodel, preProcess, postProcess, globalDevices), status(bmodel) {
+    RunnerInfo(const char* bmodel, unsigned int batch = 1):
+        task_id(INVALID_TASK_ID), runner(bmodel, preProcess, postProcess, globalDevices), status(bmodel), batch(batch) {
         runner.start();
         status.start();
     }
@@ -62,6 +62,7 @@ struct RunnerInfo {
 
     GeneralRunner runner;
     ProcessStatInfo status;
+    unsigned int batch;
 };
 
 std::map<unsigned int, std::shared_ptr<RunnerInfo>> globalRunnerInfos;
@@ -110,12 +111,16 @@ bool postProcess(const InputType& input, const TensorVec& outTensors, OutputType
     return true;
 }
 
-unsigned int runner_start(const char *bmodel) {
+unsigned int runner_start_with_batch(const char *bmodel, unsigned int batch) {
     set_env_log_level();
     unsigned int runner_id = 0;
     while(globalRunnerInfos.count(runner_id)) runner_id++;
-    globalRunnerInfos[runner_id] = std::make_shared<RunnerInfo>(bmodel);
+    globalRunnerInfos[runner_id] = std::make_shared<RunnerInfo>(bmodel, batch);
     return runner_id;
+}
+
+unsigned int runner_start(const char *bmodel) {
+    runner_start_with_batch(bmodel, 1);
 }
 
 void runner_stop(unsigned int runner_id) {
@@ -181,7 +186,7 @@ static tensor_data_t *__runner_get_output(unsigned runner_id, unsigned int *task
     *task_id = output.id;
     *output_num = output.num;
     *is_valid = status->valid;
-    info->status.update(status);
+    info->status.update(status, info->batch);
     return output.tensors;
 }
 
