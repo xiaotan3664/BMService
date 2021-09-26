@@ -45,6 +45,7 @@ std::string DetectBox::json() const
 
 std::vector<std::vector<DetectBox> > batchNMS(const std::vector<std::vector<DetectBox> > &batchInfo, float iouThresh, size_t topk, bool useSoftNms, float sigma){
     std::vector<std::vector<DetectBox>> results(batchInfo.size());
+//#pragma omp parallel for num_threads(NTHREADS)
     for(size_t i=0; i<batchInfo.size(); i++){
         results[i] = singleNMS(batchInfo[i], iouThresh, topk, useSoftNms, sigma);
     }

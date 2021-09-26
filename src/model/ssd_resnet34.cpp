@@ -12,6 +12,8 @@
 #include "BMImageUtils.h"
 #include "BMDetectUtils.h"
 #include "bmcv_api.h"
+#include <omp.h>
+#define NTHREADS 8
 
 using namespace bm;
 #define OUTPUT_RESULT_FILE  "ssd_resnet34_result.json"
@@ -218,7 +220,6 @@ bool preProcess(const InType& in, const TensorVec& inTensors, ContextPtr ctx){
         auto image = readAlignedImage(ctx->handle, imageName);
         alignedInputs->push_back(image);
     }
-
     centralCropAndResize(ctx->handle, *alignedInputs, cfg.resizedImages, 1.0);
 //    saveImage(cfg.resizedImages[0], "resize.jpg");
 
@@ -263,15 +264,18 @@ void softmax(float* scores, const int* shape, const size_t dim, int axis){
         if(i>axis){ inner *= shape[i]; }
     }
     auto len = shape[axis];
+#pragma omp parallel for collapse(2) num_threads(NTHREADS)
     for(size_t x=0; x<outer; x++){
         for(size_t y=0; y<inner; y++){
             size_t base = x*inner*len + y;
             float sum = 0;
+#pragma omp parallel for num_threads(NTHREADS) reduction(+:sum)
             for(size_t z =0; z<len; z++){
                 size_t offset = base + z*inner;
                 scores[offset] = exp(scores[offset]);
                 sum += scores[offset];
             }
+#pragma omp parallel for num_threads(NTHREADS)
             for(size_t z =0; z<len; z++){
                 size_t offset = base + z*inner;
                 scores[offset]/=sum;
@@ -318,9 +322,13 @@ std::map<size_t, std::vector<std::vector<DetectBox>>> selectBoxes(
         const std::vector<DetectBox>& boxes, const float* rawScoreData,
         size_t batch, size_t classNum, size_t boxNum, float selectThresh) {
     std::map<size_t, std::vector<std::vector<DetectBox>>> result;
+    for(size_t c=1; c<classNum; c++){
+        result[c] = {};
+    }
     for(size_t b=0; b<batch; b++){
         auto batchScoreOffset = b*classNum*boxNum;
         auto boxOffset = b*boxNum;
+#pragma omp parallel for num_threads(NTHREADS) shared(result)
         for(size_t c=1; c<classNum; c++){
             result[c].resize(batch);
             auto& validBoxes = result[c][b];

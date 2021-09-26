@@ -163,6 +163,9 @@ void dumpImage(bm_image& bmImage, const std::string& name){
             } else if(bmImage.data_type == DATA_TYPE_EXT_1N_BYTE_SIGNED){
                 auto data=(char*) buffers[i];
                 fprintf(fp, "%d\n", data[j]);
+            } else {
+                auto data=(float*) buffers[i];
+                fprintf(fp, "%g\n", data[j]);
             }
         }
         delete [] ((unsigned char*)buffers[i]);
