@@ -77,6 +77,7 @@ bool preProcess(const InputType& input, const TensorVec& inTensors, ContextPtr c
         BM_ASSERT_EQ(inTensors[i]->get_dtype(), input.tensors[i].dtype);
         BM_ASSERT_LE(in_mem_size, inTensors[i]->get_mem_size());
         inTensors[i]->fill_device_mem(input.tensors[i].data, in_mem_size);
+        inTensors[i]->set_shape(input.tensors[i].shape, input.tensors[i].dims);
     }
     return true;
 }
