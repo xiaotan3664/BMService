@@ -31,6 +31,12 @@ void dumpImage(bm_image& bmImage, const std::string& name = "image.txt");
 
 std::map<size_t, std::string> loadLabels(const std::string& filename);
 std::map<std::string, size_t> loadClassRefs(const std::string& filename, const std::string& prefix="");
+
+float sigmoid(float x);
+void centralCrop(bm_handle_t handle,
+                std::vector<bm_image>& srcImages,
+                std::vector<bm_image>& dstImages);
+
 }
 
 #endif // BMIMAGEUTILS_H

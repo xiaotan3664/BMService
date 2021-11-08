@@ -271,4 +271,28 @@ void aspectScaleAndPad(bm_handle_t handle,
     }
 }
 
+float sigmoid(float x){
+    return 1.0 / (1 + expf(-x));
+}
+
+void centralCrop(bm_handle_t handle,
+                std::vector<bm_image>& srcImages,
+                std::vector<bm_image>& dstImages){
+   int numImage = srcImages.size();
+   std::vector<bmcv_rect_t> rects(numImage);
+   for(int i=0; i<numImage; i++){
+       auto& rect = rects[i];
+       auto& srcImage = srcImages[i];
+       int height = srcImage.height;
+       int width = srcImage.width;
+       rect.start_x = width>height?round((width - height) * 0.5):0;
+       rect.crop_w = height<width?height:width;
+       rect.start_y = height>width?round((height - width) * 0.5):0;
+       rect.crop_h = rect.crop_w;
+   }
+   std::vector<int> cropNumVec(numImage, 1);
+   auto statu = bmcv_image_vpp_basic(handle, numImage, srcImages.data(), dstImages.data(),
+                        cropNumVec.data(), rects.data());
+}
+
 }
