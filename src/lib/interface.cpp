@@ -75,8 +75,10 @@ bool preProcess(const InputType& input, const TensorVec& inTensors, ContextPtr c
     for(size_t i=0; i<input.num; i++){
         size_t in_mem_size = elem_num(input.tensors[i].shape, input.tensors[i].dims) * dtype_len(input.tensors[i].dtype);
         BM_ASSERT_EQ(inTensors[i]->get_dtype(), input.tensors[i].dtype);
-        BM_ASSERT_LE(in_mem_size, inTensors[i]->get_mem_size());
-        inTensors[i]->fill_device_mem(input.tensors[i].data, in_mem_size);
+        if (!inTensors[i]->fill_device_mem(input.tensors[i].data, in_mem_size))
+        {
+            BMLOG(FATAL, "fill device memory failed");
+        }
         inTensors[i]->set_shape(input.tensors[i].shape, input.tensors[i].dims);
     }
     return true;
