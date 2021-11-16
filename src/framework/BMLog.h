@@ -32,6 +32,8 @@ template<int level, typename ... ArgTypes>
 typename std::enable_if<level==FATAL , void>::type __bm_log(const char* fmt, ArgTypes ...args){
     char msg[1024];
     snprintf(msg, sizeof(msg)-1, fmt, args...);
+    printf("runtime_error, %s\n", msg);
+    fflush(stdout);
     throw std::runtime_error(msg);
 }
 
