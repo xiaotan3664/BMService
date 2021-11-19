@@ -100,6 +100,7 @@ class BMService:
     def put(self, *inputs):
         input_num = ct.c_int(len(inputs))
         bm_inputs = (BMTensor*len(inputs))()
+        inputs = [i if i.data.c_contiguous else np.ascontiguousarray(i) for i in inputs]
         for i in range(len(inputs)):
             bm_inputs[i].from_numpy(inputs[i])
         task_id = self.__lib.runner_put_input(self.runner_id, input_num, bm_inputs, 1)
