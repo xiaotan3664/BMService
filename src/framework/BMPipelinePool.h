@@ -251,7 +251,7 @@ public:
         }
     }
 
-    std::shared_ptr<ContextType> getContext() {
+    std::shared_ptr<ContextType> getContext() const {
         return context;
     }
 
@@ -293,29 +293,38 @@ private:
    std::function<void(std::shared_ptr<ContextType>)> contextDeinitializer;
 
 public:
-   BMPipelinePool(size_t num_pipeline = 1,
-                  std::function<std::shared_ptr<ContextType>(size_t)> contextInitializer = nullptr,
-                  std::function<void(std::shared_ptr<ContextType>)> contextDeinitializer = nullptr,
-                  std::function<std::string(size_t)> nameFunc = nullptr
-                  ) {
-       inQueue = std::make_shared<BMQueue<InType>>();
-       outQueue = std::make_shared<BMQueue<OutType>>();
-       for(size_t i=0; i<num_pipeline; i++){
-           std::shared_ptr<ContextType> context;
-           if(contextInitializer){
-               context = contextInitializer(i);
-           }
-           std::string pipelineName = std::string("pipeline") + std::to_string(i);
-           if(nameFunc){
-               pipelineName = nameFunc(i);
-           }
-           pipelines.emplace_back(new BMPipeline<InType, OutType, ContextType>(context, pipelineName));
-       }
-       for(auto& pipeline: pipelines){
-           pipeline->setInputQueue(inQueue);
-       }
-       this->contextDeinitializer = contextDeinitializer;
-   }
+    BMPipelinePool(size_t num_pipeline = 1,
+                   std::function<std::shared_ptr<ContextType>(size_t)> contextInitializer = nullptr,
+                   std::function<void(std::shared_ptr<ContextType>)> contextDeinitializer = nullptr,
+                   std::function<std::string(size_t)> nameFunc = nullptr
+                   ) {
+        inQueue = std::make_shared<BMQueue<InType>>();
+        outQueue = std::make_shared<BMQueue<OutType>>();
+        for(size_t i=0; i<num_pipeline; i++){
+            std::shared_ptr<ContextType> context;
+            if(contextInitializer){
+                context = contextInitializer(i);
+            }
+            std::string pipelineName = std::string("pipeline") + std::to_string(i);
+            if(nameFunc){
+                pipelineName = nameFunc(i);
+            }
+            pipelines.emplace_back(new BMPipeline<InType, OutType, ContextType>(context, pipelineName));
+        }
+        for(auto& pipeline: pipelines){
+            pipeline->setInputQueue(inQueue);
+        }
+        this->contextDeinitializer = contextDeinitializer;
+    }
+ 
+    const ContextType &getPipeLineContext(int index = 0) const {
+        if (index >= pipelines.size())
+        {
+            BMLOG(FATAL, "invalid index %d in %d", index, pipelines.size());
+            throw std::runtime_error("index overflow");
+        }
+        return *pipelines[index]->getContext();
+    }
 
     std::shared_ptr<BMQueue<InType>> getInputQueue(){
         return inQueue;

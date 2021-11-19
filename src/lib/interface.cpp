@@ -231,3 +231,30 @@ unsigned int available_devices(unsigned int *devices, unsigned int maxNum)
     }
     return realNum;
 }
+
+blob_info_t *get_input_info(unsigned runner_id, unsigned *num)
+{
+    if(!globalRunnerInfos.count(runner_id)) {
+        BMLOG(ERROR, "invalid runner_id %d", runner_id);
+        return nullptr;
+    }
+    auto& info = globalRunnerInfos[runner_id];
+    const bm_net_info_t *net_info = info->runner.getNetInfo();
+    *num = net_info->input_num;
+    auto blobs = new blob_info_t[*num];
+    for (int i = 0; i < *num; ++i)
+    {
+        auto &blob = blobs[i];
+        blob.name = net_info->input_names[i];
+        bm_shape_t &s = net_info->stages[0].input_shapes[i];
+        blob.num_dims = s.num_dims;
+        memcpy(blob.dims, s.dims, s.num_dims * sizeof(int));
+    }
+    return blobs;
+}
+
+void release_input_info(unsigned runner_id, blob_info_t *info)
+{
+    delete[] info;
+}
+

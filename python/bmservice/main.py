@@ -50,6 +50,12 @@ class BMTensor(ct.Structure):
         self.dtype = ct.c_uint32(bmtype(data.dtype))
         self.data = data.ctypes.data_as(ct.c_void_p)
 
+class BlobInfo(ct.Structure):
+    _fields_ = [
+        ("name", ct.c_char_p),
+        ("dims_num", ct.c_int),
+        ("dims", ct.c_int * 8)]
+
 class BMService:
     __lib = None
      
@@ -77,6 +83,16 @@ class BMService:
         devices = (ct.c_int*max_num.value)()
         real_num = cls.__lib.available_devices(devices, max_num)
         return tuple(devices[i] for i in range(real_num))
+
+    def get_input_info(self):
+        num = ct.c_uint32(0)
+        self.__lib.get_input_info.restype = ct.POINTER(BlobInfo)
+        infos = self.__lib.get_input_info(self.runner_id, ct.byref(num))
+        result = dict()
+        for _, info in zip(range(num.value), infos):
+            result[info.name.decode()] = [info.dims[i] for i in range(info.dims_num)]
+        self.__lib.release_input_info(self.runner_id, infos)
+        return result
 
     def __del__(self):
         self.__lib.runner_stop(self.runner_id)

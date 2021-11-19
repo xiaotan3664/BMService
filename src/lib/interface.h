@@ -38,6 +38,14 @@ tensor_data_t *runner_get_output(unsigned runner_id, unsigned int *task_id, unsi
 tensor_data_t *runner_try_to_get_output(unsigned runner_id, unsigned int *task_id, unsigned int *output_num, unsigned int *is_valid);
 unsigned int runner_release_output(unsigned int output_num, const tensor_data_t *output_data);
 
+struct blob_info_t {
+    const char *name;
+    int num_dims;
+    int dims[BM_MAX_DIMS_NUM];
+};
+
+blob_info_t *get_input_info(unsigned runner_id, unsigned *num);
+void release_input_info(unsigned runner_id, blob_info_t *);
 
 #ifdef __cplusplus
 }
