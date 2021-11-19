@@ -77,7 +77,8 @@ bool preProcess(const InputType& input, const TensorVec& inTensors, ContextPtr c
         BM_ASSERT_EQ(inTensors[i]->get_dtype(), input.tensors[i].dtype);
         if (!inTensors[i]->fill_device_mem(input.tensors[i].data, in_mem_size))
         {
-            BMLOG(FATAL, "fill device memory failed");
+            BMLOG(FATAL, "fill device memory \"%s\" failed %d vs %d",
+                  inTensors[i]->name().c_str(), in_mem_size, inTensors[i]->get_mem_size());
         }
         inTensors[i]->set_shape(input.tensors[i].shape, input.tensors[i].dims);
     }
