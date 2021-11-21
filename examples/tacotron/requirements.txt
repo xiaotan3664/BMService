@@ -1,0 +1,5 @@
+librosa
+sndfile
+nvidia-dllogger
+unidecode
+inflect

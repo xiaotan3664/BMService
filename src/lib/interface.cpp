@@ -77,7 +77,8 @@ bool preProcess(const InputType& input, const TensorVec& inTensors, ContextPtr c
         BM_ASSERT_EQ(inTensors[i]->get_dtype(), input.tensors[i].dtype);
         if (!inTensors[i]->fill_device_mem(input.tensors[i].data, in_mem_size))
         {
-            BMLOG(FATAL, "fill device memory failed");
+            BMLOG(FATAL, "fill device memory \"%s\" failed %d vs %d",
+                  inTensors[i]->name().c_str(), in_mem_size, inTensors[i]->get_mem_size());
         }
         inTensors[i]->set_shape(input.tensors[i].shape, input.tensors[i].dims);
     }
@@ -231,3 +232,30 @@ unsigned int available_devices(unsigned int *devices, unsigned int maxNum)
     }
     return realNum;
 }
+
+blob_info_t *get_input_info(unsigned runner_id, unsigned *num)
+{
+    if(!globalRunnerInfos.count(runner_id)) {
+        BMLOG(ERROR, "invalid runner_id %d", runner_id);
+        return nullptr;
+    }
+    auto& info = globalRunnerInfos[runner_id];
+    const bm_net_info_t *net_info = info->runner.getNetInfo();
+    *num = net_info->input_num;
+    auto blobs = new blob_info_t[*num];
+    for (int i = 0; i < *num; ++i)
+    {
+        auto &blob = blobs[i];
+        blob.name = net_info->input_names[i];
+        bm_shape_t &s = net_info->stages[0].input_shapes[i];
+        blob.num_dims = s.num_dims;
+        memcpy(blob.dims, s.dims, s.num_dims * sizeof(int));
+    }
+    return blobs;
+}
+
+void release_input_info(unsigned runner_id, blob_info_t *info)
+{
+    delete[] info;
+}
+

@@ -1,0 +1,14 @@
+mel.pt
+bmmels/
+*.wav
+checkpoints/
+*compilation*/
+onnx_models/
+trt_post_mel.npy
+audios.npy
+post_mel_00.npy
+mel_00.npy
+memory_00.npy
+processed_memory_00.npy
+input_00.npy
+mel.pt

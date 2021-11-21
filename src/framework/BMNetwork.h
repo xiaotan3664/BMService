@@ -46,6 +46,7 @@ public:
     unsigned char* get_raw_data();
     float *get_float_data();
     size_t fill_host_mem(void* ptr, size_t len);
+    const std::string &name() const { return m_name; }
 
     virtual ~BMTensor();
     void dumpData(const char* name);
@@ -78,6 +79,7 @@ public:
 
     ~BMNetwork() { }
     size_t getBatchSize(){ return batchSize; }
+    const bm_net_info_t *getNetInfo() const { return m_netinfo; }
 
     TensorVec createOutputTensors();
     TensorVec createInputTensors();
