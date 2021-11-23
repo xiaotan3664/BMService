@@ -28,6 +28,7 @@ After initializing your bmnnsdk environment, run the following commands to build
 mkdir build && cd build
 cmake ..
 make -j
+make install
 ```
 
 BMSerice-xxx will be generated for running

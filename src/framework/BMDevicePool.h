@@ -4,7 +4,6 @@
 #include <functional>
 #include <algorithm>
 #include <exception>
-#include <opencv2/opencv.hpp>
 #include <chrono>
 #include "BMDeviceUtils.h"
 #include "BMPipelinePool.h"
@@ -107,6 +106,7 @@ struct ProcessStatInfo {
     std::chrono::steady_clock::time_point startTime;
     ProcessStatInfo(const std::string& name): name(name), startTime(std::chrono::steady_clock::now()){ }
     void update(const std::shared_ptr<ProcessStatus>& status, size_t batch=1);
+    uint32_t *get_durations(unsigned *num);
     void show();
     void start();
     ~ProcessStatInfo(){
@@ -164,8 +164,9 @@ public:
             this->atomicBatchSize=context->getBatchSize();
             return context;
         };
-        std::function<std::string(size_t)>  nameFunc  = [&localDeviceIds](size_t i) {
-            return "device"+ std::to_string(localDeviceIds[i]);
+        std::function<std::string(size_t, ContextType &)>  nameFunc  = [&localDeviceIds](size_t i, ContextType &ctx) {
+            const bm_net_info_t *netInfo = ctx.net->getNetInfo();
+            return std::string(netInfo->name) + "@" + std::to_string(localDeviceIds[i]);
         };
 
         pool = std::make_shared<RunnerType>(deviceNum, contextInitializer, nullptr, nameFunc);
@@ -176,7 +177,7 @@ public:
         PreProcessFunc preCoreFunc = preProcessFunc;
         PostProcessFunc postCoreFunc = postProcessFunc;
         std::function<bool(const InType&, _PreOutType&, ContextPtr ctx)> preFunc =
-                [preCoreFunc] (const InType& in, _PreOutType& out, ContextPtr ctx){
+                [this, preCoreFunc] (const InType& in, _PreOutType& out, ContextPtr ctx){
             return preProcess(in, out, ctx, preCoreFunc);
         };
         std::function<std::vector<_PreOutType>(ContextPtr)> preCreateFunc = createPreProcessOutput;
@@ -196,6 +197,10 @@ public:
     const bm_net_info_t *getNetInfo() const {
         const ContextType &ctx = pool->getPipeLineContext(0);
         return ctx.net->getNetInfo();
+    }
+
+    void join() {
+        pool->join();
     }
 
     void start() {
@@ -245,7 +250,17 @@ public:
         return res;
     }
 
-    static bool preProcess(const InType& in, _PreOutType& out, ContextPtr ctx, PreProcessFunc preCoreFunc) {
+    bool waitAndPop(OutType &out, std::shared_ptr<ProcessStatus>& status) {
+        _PostOutType postOut;
+        bool res = pool->waitAndPop(postOut);
+        if(res){
+            status = postOut.status;
+            out = postOut.out;
+        }
+        return res;
+    }
+
+    bool preProcess(const InType& in, _PreOutType& out, ContextPtr ctx, PreProcessFunc preCoreFunc) {
         out.status = std::make_shared<ProcessStatus>();
         out.status->deviceId = ctx->deviceId;
         out.status->start();

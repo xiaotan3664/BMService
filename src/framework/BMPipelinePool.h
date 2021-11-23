@@ -19,7 +19,7 @@ private:
 public:
     virtual ~BMPipelineNodeBase() {}
     virtual void start() = 0;
-    virtual void join() = 0;
+    virtual void join(bool join_out_queue = false) = 0;
     virtual void setOutQueue(std::shared_ptr<BMQueueVoid>) = 0;
 };
 
@@ -48,38 +48,37 @@ private:
             BMLOG(FATAL, "[%s] no input task queue!", name.c_str());
             return;
         }
-        while(!done){
+        // done is global, if it is set all pipeline threads will stop
+        // so we use a seperate local flag
+        // done can still be useful, such as when handling exceptions
+        bool join = false;
+        while (!done && !join){
             OutType out;
             InType in;
-            while(!done && outFreeQueue) {
-                if(outFreeQueue->tryPop(out)) {
-                    BMLOG(DEBUG, "[%s] got an output resource", name.c_str());
-                    break;
-                }
-                std::this_thread::yield();
+            if(outFreeQueue && outFreeQueue->waitAndPop(out)) {
+                BMLOG(DEBUG, "[%s] got an output resource", name.c_str());
             }
             bool finish = false;
             while(!done && !finish){
-                while(!done) {
-                    if(inTaskQueue->tryPop(in)) {
-                        BMLOG(DEBUG, "[%s] got a task", name.c_str());
-                        break;
-                    }
-                    std::this_thread::yield();
+                if(inTaskQueue->waitAndPop(in)) {
+                    BMLOG(DEBUG, "[%s] got a task", name.c_str());
+                } else {
+                    BMLOG(DEBUG, "[%s] join", name.c_str());
+                    join = true;
+                    break;
                 }
-                try {
-                    if(!done){
-                        finish = taskFunc(in, out, context);
-                        if(inFreeQueue) {
-                            BMLOG(DEBUG, "[%s] return an input resource", name.c_str());
-                            inFreeQueue->push(in);
-                        }
-                    } else {
-                        break;
+                if(!done){
+                    finish = taskFunc(in, out, context);
+                    if(inFreeQueue) {
+                        BMLOG(DEBUG, "[%s] return an input resource", name.c_str());
+                        inFreeQueue->push(in);
                     }
-                } catch(...){
-                    done = true;
+                } else {
+                    break;
                 }
+            }
+            if (join) {
+                break;
             }
             if(!done){
                 if(outTaskQueue) {
@@ -118,9 +117,12 @@ public:
         innerThread = std::thread(&BMPipelineNodeImp<InType, OutType, ContextType>::workThread, this);
         BMLOG(DEBUG, "thread created id=%d", innerThread.get_id());
     }
-    void join() override {
+    void join(bool join_out_queue = false) override {
         if(innerThread.joinable()){
             innerThread.join();
+        }
+        if (join_out_queue) {
+            outTaskQueue->join();
         }
     }
 
@@ -266,15 +268,25 @@ public:
         return outQueue->tryPop(value);
     }
 
+    bool waitAndPop(OutType &value) {
+        return outQueue->waitAndPop(value);
+    }
+
     bool isStopped(){
         return done;
     }
 
+    void join() {
+        for (int i = 0; i < pipelineNodes.size(); ++i)
+        {
+            auto &node = pipelineNodes[i];
+            node->join(i + 1 != pipelineNodes.size());
+        }
+    }
+
     void stop(){
         done = true;
-        for(auto& node: pipelineNodes){
-            node->join();
-        }
+        this->join();
     }
 
     ~BMPipeline(){
@@ -296,7 +308,7 @@ public:
     BMPipelinePool(size_t num_pipeline = 1,
                    std::function<std::shared_ptr<ContextType>(size_t)> contextInitializer = nullptr,
                    std::function<void(std::shared_ptr<ContextType>)> contextDeinitializer = nullptr,
-                   std::function<std::string(size_t)> nameFunc = nullptr
+                   std::function<std::string(size_t, ContextType &)> nameFunc = nullptr
                    ) {
         inQueue = std::make_shared<BMQueue<InType>>();
         outQueue = std::make_shared<BMQueue<OutType>>();
@@ -307,7 +319,7 @@ public:
             }
             std::string pipelineName = std::string("pipeline") + std::to_string(i);
             if(nameFunc){
-                pipelineName = nameFunc(i);
+                pipelineName = nameFunc(i, *context);
             }
             pipelines.emplace_back(new BMPipeline<InType, OutType, ContextType>(context, pipelineName));
         }
@@ -425,7 +437,20 @@ public:
         return outQueue->tryPop(out);
     }
 
+    bool waitAndPop(OutType& out) {
+        return outQueue->waitAndPop(out);
+    }
+
+    void join() {
+        inQueue->join();
+        for(auto& pipeline: pipelines) {
+            pipeline->join();
+        }
+        outQueue->join();
+    }
+
     ~BMPipelinePool(){
+        this->join();
         if(contextDeinitializer){
             for(auto& pipeline: pipelines){
                 if(!pipeline) continue;
