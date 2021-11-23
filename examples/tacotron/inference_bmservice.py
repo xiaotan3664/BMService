@@ -328,7 +328,7 @@ def main():
             audio = torch.from_numpy(audio)
             audio = audio[:mel_lengths[i]*args.stft_hop_length]
             audio = audio/torch.max(torch.abs(audio))
-            audio_path = args.output + "audio_"+str(i)+"_bmrt.wav"
+            audio_path = os.path.join(args.output, "audio_"+str(i)+"_bmrt.wav")
             write(audio_path, args.sampling_rate, audio.cpu().numpy())
 
 if __name__ == "__main__":
