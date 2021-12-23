@@ -223,38 +223,20 @@ int main(int argc, char* argv[]){
             runner.push(imageFiles);
             return true;
         });
-        while(!runner.allStopped()){
-            if(runner.canPush()) {
-                runner.push({});
-            } else {
-                std::this_thread::yield();
-            }
-        }
+        runner.join();
     });
     std::thread resultThread([&runner, &refMap, &labelMap, &info, batchSize](){
         PostOutType out;
         std::shared_ptr<ProcessStatus> status;
-        bool stopped = false;
         Top5AccuracyStat stat;
         while(true){
-            while(!runner.pop(out, status)) {
-                if(runner.allStopped()) {
-                    stopped = true;
-                    break;
-                }
-                std::this_thread::yield();
-            }
-            if(stopped) break;
-            info.update(status, batchSize);
-
-            if(!resultProcess(out, stat, refMap, labelMap)){
-                runner.stop(status->deviceId);
-            }
-            if(runner.allStopped()){
+            if (!runner.waitAndPop(out, status)) {
                 info.show();
                 stat.show();
                 break;
             }
+            info.update(status, batchSize);
+            resultProcess(out, stat, refMap, labelMap);
         }
     });
 

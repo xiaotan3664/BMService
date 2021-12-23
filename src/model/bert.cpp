@@ -346,35 +346,18 @@ int main(int argc, char** argv){
         parseSquadFile(squadPath, batchSize, [&runner](const std::vector<std::shared_ptr<SquadData>>& batchData){
             return runner.push(batchData);
         });
-        while(!runner.allStopped()){
-            if(runner.canPush()) {
-                runner.push({});
-            } else {
-                std::this_thread::yield();
-            }
-        }
+        runner.join();
     });
     std::map<std::string, std::string> prediction;
     std::thread resultThread([&runner, &info, &prediction](){
         PostOutType out;
         std::shared_ptr<ProcessStatus> status;
-        bool stopped = false;
-        while(true){
-            while(!runner.pop(out, status)) {
-                if(runner.allStopped()) {
-                    stopped = true;
-                    break;
-                }
-                std::this_thread::yield();
-            }
-            if(stopped) break;
-            info.update(status, out.squadRecords.size());
-            if(!resultProcess(out, prediction)){
-                runner.stop(status->deviceId);
-            }
-            if(runner.allStopped()){
+        while (true) {
+            if (!runner.waitAndPop(out, status)) {
                 break;
             }
+            info.update(status, out.squadRecords.size());
+            resultProcess(out, prediction);
         }
     });
 
