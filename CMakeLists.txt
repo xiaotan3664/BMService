@@ -22,11 +22,11 @@ include_directories(src/model)
 include_directories(thirdparty/jsonxx)
 include_directories(src/lib)
 
-aux_source_directory(src/framework FRAMEWORK_FILES)
-aux_source_directory(src/tool TOOL_FILES)
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/src/framework FRAMEWORK_FILES)
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/src/tool TOOL_FILES)
 aux_source_directory(src/model MODEL_FILES)
 aux_source_directory(src/main MAIN_FILES)
-set(JSONXX_SRC "thirdparty/jsonxx/jsonxx.cc")
+set(JSONXX_SRC "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/jsonxx/jsonxx.cc")
 
 set(bmnnsdk_inc_dirs ${BMNNSDK2_TOP}/include
         ${BMNNSDK2_TOP}/include/bmruntime
@@ -100,4 +100,7 @@ add_library(${LIB_TARGET} SHARED ${LIB_SOURCES} ${TOOL_FILES} ${FRAMEWORK_FILES}
 target_link_libraries(${LIB_TARGET} ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(${LIB_TARGET} ${bmnnsdk_link_libs})
 
-INSTALL(TARGETS ${LIB_TARGET} LIBRARY DESTINATION python/bmservice/lib)
+enable_testing()
+add_subdirectory(tests)
+
+INSTALL(TARGETS ${LIB_TARGET} LIBRARY DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/python/bmservice/lib)

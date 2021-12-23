@@ -137,6 +137,13 @@ void ProcessStatInfo::start() {
     startTime=std::chrono::steady_clock::now();
 }
 
+uint32_t *ProcessStatInfo::get_durations(unsigned *num) {
+    *num = durations.size();
+    auto data = new uint32_t[durations.size()];
+    std::copy(durations.begin(), durations.end(), data);
+    return data;
+}
+
 void ProcessStatInfo::show() {
     auto end = std::chrono::steady_clock::now();
     auto totalUs = usBetween(startTime, end);

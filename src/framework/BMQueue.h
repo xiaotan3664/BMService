@@ -27,6 +27,7 @@ private:
     std::unique_ptr<Node> head;
     std::mutex tail_mutex;
     Node* tail;
+    bool joined = false;
     size_t max_nodes;
     std::atomic<size_t> num_nodes;
     std::condition_variable data_cond;
@@ -43,12 +44,13 @@ private:
 
     std::unique_lock<std::mutex> waitForData(){
         std::unique_lock<std::mutex> ulock(head_mutex);
-        data_cond.wait(ulock, [&]{ return head.get() == tail; });
+        data_cond.wait(ulock, [&]{ return head.get() != tail || joined; });
         return ulock;
     }
 
     std::unique_ptr<Node> waitPopHead(){
         std::unique_lock<std::mutex> head_lock(waitForData());
+        if (head.get() == getTail()) return nullptr;
         return popHead();
     }
 
@@ -79,12 +81,21 @@ public:
 
     std::shared_ptr<T> waitAndPop() {
         const auto oldHead = waitPopHead();
+        if (!oldHead) return oldHead;
         return oldHead->data;
     }
 
-    void waitAndPop(T& value) {
+    bool waitAndPop(T& value) {
         const auto oldHead = waitPopHead();
+        if (!oldHead) return false;
         value = std::move(*oldHead->data);
+        return true;
+    }
+
+    void join() {
+        LOCK(head);
+        joined = true;
+        data_cond.notify_all();
     }
 
     bool canPush() {

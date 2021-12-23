@@ -46,6 +46,9 @@ struct blob_info_t {
 
 blob_info_t *get_input_info(unsigned runner_id, unsigned *num);
 void release_input_info(unsigned runner_id, blob_info_t *);
+void runner_join(unsigned int runner_id);
+unsigned *get_runner_durations(unsigned runner_id, unsigned *num);
+void release_unsigned_pointer(unsigned *data);
 
 #ifdef __cplusplus
 }

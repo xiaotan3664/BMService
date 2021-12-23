@@ -98,6 +98,9 @@ class BMService:
         self.__lib.runner_stop(self.runner_id)
 
     def put(self, *inputs):
+        if not inputs:
+            self.__lib.runner_join(self.runner_id)
+            return
         input_num = ct.c_int(len(inputs))
         bm_inputs = (BMTensor*len(inputs))()
         inputs = [i if i.data.c_contiguous else np.ascontiguousarray(i) for i in inputs]
@@ -174,7 +177,7 @@ class BMService:
             return 0, [], 0
         outputs = []
         if output_valid.value == 0:
-            return task_id, [], False
+            return task_id.value, [], False
         for i in range(output_num.value):
             outputs.append(output_tensors[i].to_numpy())
         self.__lib.runner_release_output(output_num, output_tensors)
@@ -190,6 +193,14 @@ class BMService:
         while not self.stopped():
             self.put()
             time.sleep(0.01)
+
+    def get_durations(self):
+        num = ct.c_uint32(0)
+        self.__lib.get_runner_durations.restype = ct.POINTER(ct.c_uint32)
+        durations = self.__lib.get_runner_durations(self.runner_id, ct.byref(num))
+        result = [durations[i] for i in range(num.value)]
+        self.__lib.release_unsigned_pointer(durations);
+        return result
 
     def show(self):
         self.__lib.runner_show_status(self.runner_id)

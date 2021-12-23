@@ -112,28 +112,17 @@ int main(int argc, char* argv[]){
         forEachBatch(dataPath, batchSize, [&runner](const InType& imageFiles){
             return runner.push(imageFiles);
         });
-        while(!runner.allStopped()){
-            if(runner.canPush()) {
-                runner.push({});
-            } else {
-                std::this_thread::yield();
-            }
-        }
+        runner.join();
     });
 
     std::thread resultThread([&runner, &info](){
         PostOutType out;
         std::shared_ptr<ProcessStatus> status;
-        bool stopped = false;
-        while(true){
-            while(!runner.pop(out, status)) {
-                if(runner.allStopped()) {
-                    stopped = true;
-                    break;
-                }
-                std::this_thread::yield();
+        while (true){
+            if (!runner.waitAndPop(out, status))
+            {
+                break;
             }
-            if(stopped) break;
             info.update(status, out.rawIns.size());
 
             if(!resultProcess(out)){

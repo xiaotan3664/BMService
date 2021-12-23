@@ -34,3 +34,9 @@ python3 inference_bmservice.py --threads 1 -i phrases/phrase.txt -o out
 
 In order to fully utilize hardware resource, `--threads` should be at least the same with TPU core number.
 
+### Inference benchmark
+
+```
+python3 ./test_infer.py -o out
+```
+
