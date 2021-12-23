@@ -306,38 +306,20 @@ int main(int argc, char* argv[]){
         forEachBatch(dataPath, batchSize, [&runner](const std::vector<std::string> names){
             return runner.push(names);
         });
-        while(!runner.allStopped()){
-            if(runner.canPush()) {
-                runner.push({});
-            } else {
-                std::this_thread::yield();
-            }
-        }
+        runner.join();
     });
     std::thread resultThread([&runner, &info, &allPredictions](){
         PostOutType out;
         std::shared_ptr<ProcessStatus> status;
-        bool stopped = false;
-        while(true){
-            while(!runner.pop(out, status)) {
-                if(runner.allStopped()) {
-                    stopped = true;
-                    break;
-                }
-                std::this_thread::yield();
-            }
-            if(stopped) break;
-            info.update(status, out.rawIns.size());
-            if(!resultProcess(out, allPredictions)){
-                runner.stop(status->deviceId);
-            }
-            if(runner.allStopped()){
+        while (true) {
+            if (!runner.waitAndPop(out, status)) {
                 info.show();
                 break;
             }
+            resultProcess(out, allPredictions);
+            info.update(status, out.rawIns.size());
         }
     });
-
 
     dataThread.join();
     resultThread.join();

@@ -241,35 +241,18 @@ int main(int argc, char** argv){
             if(inputs.size()>0) return runner.push(std::move(inputs));
             return true;
         });
-        while(!runner.allStopped()){
-            if(runner.canPush()) {
-                runner.push({});
-            } else {
-                std::this_thread::yield();
-            }
-        }
+        runner.join();
     });
     std::vector<std::pair<unsigned int, float>> scores;
     std::thread resultThread([&runner, &info, &scores](){
         DLRMOutput out;
         std::shared_ptr<ProcessStatus> status;
-        bool stopped = false;
         while(true){
-            while(!runner.pop(out, status)) {
-                if(runner.allStopped()) {
-                    stopped = true;
-                    break;
-                }
-                std::this_thread::yield();
-            }
-            if(stopped) break;
-            info.update(status, out.inputs.size());
-            if(!resultProcess(out, scores)){
-                runner.stop(status->deviceId);
-            }
-            if(runner.allStopped()){
+            if (!runner.waitAndPop(out, status)) {
                 break;
             }
+            info.update(status, out.inputs.size());
+            resultProcess(out, scores);
         }
     });
 

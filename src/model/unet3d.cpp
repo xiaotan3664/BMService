@@ -124,13 +124,7 @@ int main(int argc, char* argv[]){
                 break;
             }
             info.update(status, out.rawIns.size());
-
-            if(!resultProcess(out)){
-                runner.stop(status->deviceId);
-            }
-            if(runner.allStopped()){
-                break;
-            }
+            resultProcess(out);
         }
     });
 
