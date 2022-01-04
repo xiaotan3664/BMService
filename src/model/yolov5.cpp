@@ -5,6 +5,7 @@
 #include<sys/stat.h>
 #include <algorithm>
 #include <fstream>
+#include <cmath>
 #include "BMDevicePool.h"
 #include "BMDeviceUtils.h"
 #include "BMImageUtils.h"
