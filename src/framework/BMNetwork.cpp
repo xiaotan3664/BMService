@@ -104,6 +104,19 @@ int BMNetwork::forward(TensorVec inTensors, TensorVec outTensors) {
     auto net_out_tensors = outTensors[0]->raw_tensor();
     auto net_in_tensors = inTensors[0]->raw_tensor();
 
+    int static_batch_size = m_netinfo->stages[0].input_shapes[0].dims[0];
+    int runtime_batch_size = net_in_tensors[0].shape.dims[0];
+    if (!m_netinfo->is_dynamic && runtime_batch_size < static_batch_size)
+    {
+        // Static model with input batch size smaller than model n size
+        // Use model n to do forwarding
+        BMLOG(DEBUG, "override batch size from %d to %d", runtime_batch_size, static_batch_size);
+        for (int i = 0; i < m_netinfo->input_num; ++i)
+            net_in_tensors[i].shape.dims[0] = static_batch_size;
+        for (int i = 0; i < m_netinfo->output_num; ++i)
+            net_out_tensors[i].shape.dims[0] = static_batch_size;
+    }
+
     bool user_mem = false; // if false, bmrt will alloc mem every time.
     if (net_out_tensors->device_mem.size != 0) {
         // if true, bmrt don't alloc mem again.
@@ -112,6 +125,13 @@ int BMNetwork::forward(TensorVec inTensors, TensorVec outTensors) {
 
     bool ok=bmrt_launch_tensor_ex(m_bmrt, m_netinfo->name, net_in_tensors, m_netinfo->input_num,
                                   net_out_tensors, m_netinfo->output_num, user_mem, false);
+
+    if (!m_netinfo->is_dynamic && runtime_batch_size < static_batch_size)
+    {
+        // Set runtime batch size for static model
+        for (int i = 0; i < m_netinfo->output_num; ++i)
+            net_out_tensors[i].shape.dims[0] = runtime_batch_size;
+    }
 
     BM_ASSERT(ok, "bmrt_launch_tensor_ex failed");
     bm_thread_sync(m_handle);
