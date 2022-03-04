@@ -2,7 +2,7 @@
 
 mkdir -p build
 cd build
-cmake ../
+TARGET_ARCH=x86-pcie cmake ../
 make -j
 make install
 cd ..

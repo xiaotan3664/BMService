@@ -14,7 +14,6 @@ else()
 endif()
 
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
-set(TARGET_ARCH "x86-pcie")
 
 include_directories(src/framework)
 include_directories(src/tool)
@@ -40,7 +39,7 @@ set(bmnnsdk_link_libs bmrt bmlib bmcv
         avfilter avformat avcodec avutil swresample swscale bmvideo bmjpuapi bmjpulite pthread
         CACHE INTERNAL "")
 
-if (${TARGET_ARCH} STREQUAL "x86-pcie")
+if ($ENV{TARGET_ARCH} STREQUAL "x86-pcie")
     set(bmnnsdk_link_dirs ${BMNNSDK2_TOP}/lib/bmnn/pcie
             ${BMNNSDK2_TOP}/lib/opencv/x86
             ${BMNNSDK2_TOP}/lib/thirdparty/x86
@@ -49,7 +48,7 @@ if (${TARGET_ARCH} STREQUAL "x86-pcie")
             ${BMNNSDK2_TOP}/lib/decode/x86
             CACHE INTERNAL "")
 
-elseif (${TARGET_ARCH} STREQUAL "arm-pcie")
+elseif ($ENV{TARGET_ARCH} STREQUAL "arm-pcie")
     set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
     set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
     set(bmnnsdk_link_dirs
@@ -100,7 +99,10 @@ add_library(${LIB_TARGET} SHARED ${LIB_SOURCES} ${TOOL_FILES} ${FRAMEWORK_FILES}
 target_link_libraries(${LIB_TARGET} ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(${LIB_TARGET} ${bmnnsdk_link_libs})
 
+if ($ENV{TARGET_ARCH} STREQUAL "x86-pcie")
 enable_testing()
 add_subdirectory(tests)
+endif()
+
 
 INSTALL(TARGETS ${LIB_TARGET} LIBRARY DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/python/bmservice/lib)
