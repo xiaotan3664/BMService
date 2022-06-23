@@ -63,11 +63,27 @@ std::vector<DetectBox> singleNMS(const std::vector<DetectBox> &info, float iouTh
         while(!boxes.empty()){
             auto bestIndex = argmax(boxes.data(), boxes.size(), [](const DetectBox& i){ return i.confidence; });
             auto& bestBox = boxes[bestIndex];
-            bestBoxes.push_back(bestBox);
             if(topk>0 && bestBoxes.size()>=topk){
                 break;
             }
-            if(!useSoftNms){
+            bool keep = true;
+            for (unsigned int i = 0; i < bestBoxes.size(); i ++){
+                auto box = bestBoxes[i];
+                if (keep){
+                    keep = bestBox.iou(box) < iouThresh;
+                } else {
+                    break;
+                }
+            }
+
+            if (keep)
+                bestBoxes.push_back(bestBox);
+            auto iter = std::remove(boxes.begin(), boxes.end(), bestBox);
+            boxes.erase(iter, boxes.end());
+            if (useSoftNms) {
+                //TODO
+            }
+            /*if(!useSoftNms){
                 boxes.erase(std::remove_if(boxes.begin(), boxes.end(), [&bestBox, iouThresh](const DetectBox& box){
                     return bestBox.iou(box)>iouThresh;
                 }), boxes.end());
@@ -78,7 +94,7 @@ std::vector<DetectBox> singleNMS(const std::vector<DetectBox> &info, float iouTh
                     auto weight = exp(-(1.0 * iouScore*iouScore / sigma));
                     box.confidence *= weight;
                 });
-            }
+            }*/
         }
     }
     return bestBoxes;

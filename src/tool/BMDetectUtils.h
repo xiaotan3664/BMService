@@ -26,6 +26,9 @@ struct DetectBox {
     bool operator > (const DetectBox& other) const {
         return confidence > other.confidence;
     }
+    bool operator == (const DetectBox& other) const {
+        return confidence == other.confidence;
+    }
     std::string json() const;
 };
 
