@@ -1,19 +1,45 @@
 cmake_minimum_required(VERSION 3.0)
-
-
 project(BMService LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_BUILD_TYPE "Debug")
+#set(CMAKE_BUILD_TYPE "Debug")
+add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
 
-if (DEFINED ENV{REL_TOP})
-    set(BMNNSDK2_TOP $ENV{REL_TOP})
-else()
-    set(BMNNSDK2_TOP "/home/bitmain/work/release/bmnnsdk2-bm1684_vSA5")
+if (NOT DEFINED TARGET_ARCH)
+    set(TARGET_ARCH x86)
 endif()
 
-add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
+
+if (${TARGET_ARCH} STREQUAL "x86")
+    set(LIBSOPHON_PATH /opt/sophon)
+    message( "${TARGET_ARCH} mode, starting......")
+
+    # use ffmpeg
+    set(FFMPEG_DIR  ${LIBSOPHON_PATH}/sophon-ffmpeg-latest/lib/cmake)
+    find_package(FFMPEG REQUIRED)
+    include_directories(${FFMPEG_INCLUDE_DIRS})
+    link_directories(${FFMPEG_LIB_DIRS})
+
+    # use opencv
+    set(OpenCV_DIR  ${LIBSOPHON_PATH}/sophon-opencv-latest/lib/cmake/opencv4)
+    find_package(OpenCV REQUIRED)
+    include_directories(${OpenCV_INCLUDE_DIRS})
+    link_directories(${OpenCV_LIB_DIRS})
+
+    # use libbmrt libbmlib
+    find_package(libsophon REQUIRED)
+    include_directories(${LIBSOPHON_INCLUDE_DIRS})
+    link_directories(${LIBSOPHON_LIB_DIRS})
+
+    # include_directories(${LIBSOPHON_OPENCV_INCLUDES})
+    # link_directories(${LIBSOPHON_OPENCV_LIBS})
+
+    # include_directories(${LIBSOPHON_FFMPEG_INCLUDES})
+    # link_directories(${LIBSOPHON_FFMPEG_LIBS})
+   set(SophonLibs dl ${OpenCV_LIBS} ${FFMPEG_LIBS} ${the_libbmlib.so} ${the_libbmrt.so} ${the_libbmcv.so})
+   message(${SophonLibs})
+endif()
 
 include_directories(src/framework)
 include_directories(src/tool)
@@ -27,51 +53,6 @@ aux_source_directory(src/model MODEL_FILES)
 aux_source_directory(src/main MAIN_FILES)
 set(JSONXX_SRC "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/jsonxx/jsonxx.cc")
 
-set(bmnnsdk_inc_dirs ${BMNNSDK2_TOP}/include
-        ${BMNNSDK2_TOP}/include/bmruntime
-        ${BMNNSDK2_TOP}/include/bmlib
-        ${BMNNSDK2_TOP}/include/opencv/opencv4
-        ${BMNNSDK2_TOP}/include/ffmpeg
-        CACHE INTERNAL "")
-
-set(bmnnsdk_link_libs bmrt bmlib bmcv
-        opencv_core opencv_imgproc opencv_imgcodecs opencv_videoio opencv_dnn
-        avfilter avformat avcodec avutil swresample swscale bmvideo bmjpuapi bmjpulite pthread
-        CACHE INTERNAL "")
-
-if ($ENV{TARGET_ARCH} STREQUAL "x86-pcie")
-    set(bmnnsdk_link_dirs ${BMNNSDK2_TOP}/lib/bmnn/pcie
-            ${BMNNSDK2_TOP}/lib/opencv/x86
-            ${BMNNSDK2_TOP}/lib/thirdparty/x86
-            ${BMNNSDK2_TOP}/lib/opencv/x86
-            ${BMNNSDK2_TOP}/lib/ffmpeg/x86
-            ${BMNNSDK2_TOP}/lib/decode/x86
-            CACHE INTERNAL "")
-
-elseif ($ENV{TARGET_ARCH} STREQUAL "arm-pcie")
-    set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
-    set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
-    set(bmnnsdk_link_dirs
-            ${BMNNSDK2_TOP}/lib/bmnn/arm_pcie/lib_CXX11_ABI1
-            ${BMNNSDK2_TOP}/lib/bmnn/arm_pcie
-            ${BMNNSDK2_TOP}/lib/opencv/arm_pcie
-            ${BMNNSDK2_TOP}/lib/thirdparty/soc
-            ${BMNNSDK2_TOP}/lib/opencv/arm_pcie
-            ${BMNNSDK2_TOP}/lib/ffmpeg/arm_pcie
-            ${BMNNSDK2_TOP}/lib/decode/arm_pcie
-            CACHE INTERNAL "")
-else()
-    set(bmnnsdk_link_dirs ${BMNNSDK2_TOP}/lib/bmnn/soc
-            ${BMNNSDK2_TOP}/lib/opencv/soc
-            ${BMNNSDK2_TOP}/lib/thirdparty/soc
-            ${BMNNSDK2_TOP}/lib/opencv/soc
-            ${BMNNSDK2_TOP}/lib/ffmpeg/soc
-            ${BMNNSDK2_TOP}/lib/decode/soc
-            CACHE INTERNAL "")
-endif ()
-
-include_directories(${bmnnsdk_inc_dirs})
-link_directories(${bmnnsdk_link_dirs})
 
 FIND_PACKAGE(OpenMP REQUIRED)
 if(OPENMP_FOUND)
@@ -82,14 +63,14 @@ set(CMAKE_EXE_LINKER_FLAGS"${CMAKE_EXE_LINKER_FLAGS}${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 
 #add_executable(${CMAKE_PROJECT_NAME} ${MAIN_FILES} ${TOOL_FILES} ${FRAMEWORK_FILES})
-#target_link_libraries(${CMAKE_PROJECT_NAME} ${bmnnsdk_link_libs})
+#target_link_libraries(${CMAKE_PROJECT_NAME} ${SophonLibs})
 
 foreach(MODEL_SOURCE ${MODEL_FILES})
     get_filename_component(MODEL_NAME ${MODEL_SOURCE} NAME_WE)
-    string(CONCAT MODEL_TARGET  "BMService-" ${MODEL_NAME})
+    string(CONCAT MODEL_TARGET  "tpu-" ${MODEL_NAME})
     add_executable(${MODEL_TARGET} ${MODEL_SOURCE} ${TOOL_FILES} ${FRAMEWORK_FILES} ${JSONXX_SRC})
     target_link_libraries(${MODEL_TARGET} ${CMAKE_THREAD_LIBS_INIT})
-    target_link_libraries(${MODEL_TARGET} ${bmnnsdk_link_libs})
+    target_link_libraries(${MODEL_TARGET} ${SophonLibs})
 endforeach(MODEL_SOURCE)
 
 
@@ -97,12 +78,9 @@ aux_source_directory(src/lib LIB_SOURCES)
 set(LIB_TARGET bmservice)
 add_library(${LIB_TARGET} SHARED ${LIB_SOURCES} ${TOOL_FILES} ${FRAMEWORK_FILES} ${JSONXX_SRC})
 target_link_libraries(${LIB_TARGET} ${CMAKE_THREAD_LIBS_INIT})
-target_link_libraries(${LIB_TARGET} ${bmnnsdk_link_libs})
+target_link_libraries(${LIB_TARGET} ${SophonLibs})
 
-if ($ENV{TARGET_ARCH} STREQUAL "x86-pcie")
 enable_testing()
 add_subdirectory(tests)
-endif()
-
 
 INSTALL(TARGETS ${LIB_TARGET} LIBRARY DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/python/bmservice/lib)

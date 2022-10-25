@@ -15,21 +15,27 @@ namespace bm {
 
 extern const char* __phaseMap[];
 class BMDeviceContext {
-
 private:
     std::vector<bm_device_mem_t> mem_to_free;
     std::vector<std::vector<bm_image>> images_to_free;
     std::vector<bm_image> info_to_free;
+    std::map<std::string, bm_device_mem_t> name_to_mem;
     void* preExtra;
     void* postExtra;
 
 public:
+   using Ptr = typename std::shared_ptr<BMDeviceContext>;
+   using FilterType = typename std::function<TensorVec(TensorVec&, Ptr)>;
+
     DeviceId deviceId;
     bm_handle_t handle;
     void* pBMRuntime;
     std::shared_ptr<BMNetwork> net;
     size_t batchSize;
     void* configData;
+
+    std::vector<FilterType> inFilters;
+    std::vector<FilterType> outFilters;
 
     BMDeviceContext(DeviceId deviceId, const std::string& bmodel);
 
@@ -38,7 +44,6 @@ public:
 
 
     bm_device_mem_t allocDeviceMem(size_t bytes);
-
     void freeDeviceMem(bm_device_mem_t& mem);
 
     void allocMemForTensor(TensorPtr tensor);
@@ -62,6 +67,9 @@ public:
             bm_image_data_format_ext dtype,
             int heap_id = BMCV_HEAP_ANY);
 
+    bm_device_mem_t getOrAllocNamedDeviceMem(const std::string& name, size_t byte_size);
+    void freeNamedDeviceMem(const std::string& name);
+
     void setPreExtra(void* data){
         preExtra = data;
     }
@@ -82,7 +90,7 @@ public:
     void setConfigData(void *value);
 };
 
-using ContextPtr = typename std::shared_ptr<BMDeviceContext>;
+using ContextPtr = BMDeviceContext::Ptr;
 
 struct ProcessStatus {
     DeviceId deviceId;
@@ -143,14 +151,15 @@ public:
     using PreProcessFunc = std::function<bool(const InType&, const TensorVec&, ContextPtr)>;
     using PostProcessFunc = std::function<bool(const InType&, const TensorVec&, OutType&, ContextPtr)>;
     std::atomic_size_t atomicBatchSize;
-
-    template<typename PreFuncType, typename PostFuncType>
-    BMDevicePool(const std::string& bmodel, PreFuncType preProcessFunc, PostFuncType postProcessFunc,
-                 std::vector<DeviceId> userDeviceIds={}): atomicBatchSize(0) {
+    
+    BMDevicePool(const std::string& bmodel, PreProcessFunc preProcessFunc, PostProcessFunc postProcessFunc,
+                 std::vector<DeviceId> userDeviceIds={}): atomicBatchSize(0),bmodel(bmodel), preProcessFunc(preProcessFunc), postProcessFunc(postProcessFunc) {
         deviceIds = userDeviceIds;
         if(userDeviceIds.empty()){
            deviceIds = getAvailableDevices();
         }
+    }
+    void __init(){
         auto localDeviceIds = deviceIds;
         auto deviceNum = deviceIds.size();
         BM_ASSERT(deviceNum>0, "no device found");
@@ -159,14 +168,16 @@ public:
             deviceStr += std::to_string(id)+" ";
         }
         BMLOG(INFO, "USING DEVICES: %s", deviceStr.c_str());
-        std::function<std::shared_ptr<ContextType>(size_t)>  contextInitializer = [&localDeviceIds, bmodel, this](size_t i) {
-            auto context = std::make_shared<ContextType>(localDeviceIds[i], bmodel);
+        std::function<std::shared_ptr<ContextType>(size_t)>  contextInitializer = [this](size_t i) {
+            auto context = std::make_shared<ContextType>(this->deviceIds[i], this->bmodel);
+            context->inFilters = this->inFilters;
+            context->outFilters = this->outFilters;
             this->atomicBatchSize=context->getBatchSize();
             return context;
         };
-        std::function<std::string(size_t, ContextType &)>  nameFunc  = [&localDeviceIds](size_t i, ContextType &ctx) {
+        std::function<std::string(size_t, ContextType &)>  nameFunc  = [this](size_t i, ContextType &ctx) {
             const bm_net_info_t *netInfo = ctx.net->getNetInfo();
-            return std::string(netInfo->name) + "@" + std::to_string(localDeviceIds[i]);
+            return std::string(netInfo->name) + "@" + std::to_string(this->deviceIds[i]);
         };
 
         pool = std::make_shared<RunnerType>(deviceNum, contextInitializer, nullptr, nameFunc);
@@ -204,6 +215,9 @@ public:
     }
 
     void start() {
+        if(!pool){
+            __init();
+        }
         pool->start();
     }
 
@@ -290,7 +304,11 @@ public:
         out.in = in.in;
         if(out.status->valid){
             out.status->start();
-            out.status->valid = ctx->net->forward(in.preOut, out.forwardOut);
+            auto preOut = in.preOut;
+            BMLOG(INFO, "ctx->inFilters.size=%d", ctx->inFilters.size());
+            for(auto filter: ctx->inFilters) preOut = filter(preOut, ctx);
+            out.status->valid = ctx->net->forward(preOut, out.forwardOut);
+            for(auto filter: ctx->outFilters) out.forwardOut = filter(out.forwardOut, ctx);
             out.status->end();
         }
         out.extra = in.extra;
@@ -325,9 +343,20 @@ public:
     }
 
     size_t deviceNum() const { return deviceIds.size(); }
+    void addForwardInputFilter(BMDeviceContext::FilterType func){
+        inFilters.push_back(func);
+    }
+    void addForwardOutputFilter(BMDeviceContext::FilterType func){
+        outFilters.push_back(func);
+    }
 private:
     RunnerPtr pool;
+    std::string bmodel;
+    PreProcessFunc preProcessFunc;
+    PostProcessFunc postProcessFunc;
     std::vector<DeviceId> deviceIds;
+    std::vector<BMDeviceContext::FilterType> inFilters;
+    std::vector<BMDeviceContext::FilterType> outFilters;
 };
 
 }

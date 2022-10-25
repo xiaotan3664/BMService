@@ -36,7 +36,7 @@ void runner_show_status(unsigned int runner_id);
 unsigned int runner_put_input(unsigned runner_id, unsigned int input_num, const tensor_data_t* input_tensors, int need_copy);
 tensor_data_t *runner_get_output(unsigned runner_id, unsigned int *task_id, unsigned int *output_num, unsigned int *is_valid);
 tensor_data_t *runner_try_to_get_output(unsigned runner_id, unsigned int *task_id, unsigned int *output_num, unsigned int *is_valid);
-unsigned int runner_release_output(unsigned int output_num, const tensor_data_t *output_data);
+void runner_release_output(unsigned int output_num, const tensor_data_t *output_data);
 
 struct blob_info_t {
     const char *name;

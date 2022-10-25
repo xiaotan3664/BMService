@@ -72,6 +72,7 @@ std::ostream& operator << (std::ostream& s, const SquadData& data){
 //    s<<"input_tokens:"<<data.tokens.size();
 //    std::copy(data.tokens.begin(), data.tokens.end(), std::ostream_iterator<std::string>{s, " "});
 //    s<<std::endl;
+   return s;
 }
 
 template<typename Func>

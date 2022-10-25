@@ -18,6 +18,7 @@ size_t dtype_len(unsigned int t) {
     } else {
         BMLOG(FATAL, "Not support dtype=%d", t);
     }
+    return 0;
 }
 
 static size_t elem_num(const unsigned int* shape, unsigned int dims){
@@ -120,7 +121,7 @@ unsigned int runner_start_with_batch(const char *bmodel, unsigned int batch) {
 }
 
 unsigned int runner_start(const char *bmodel) {
-    runner_start_with_batch(bmodel, 1);
+    return runner_start_with_batch(bmodel, 1);
 }
 
 void runner_stop(unsigned int runner_id) {
@@ -198,7 +199,7 @@ tensor_data_t *runner_get_output(unsigned runner_id, unsigned int *task_id, unsi
     return __runner_get_output(runner_id, task_id, output_num, is_valid, false);
 }
 
-unsigned int runner_release_output(unsigned int output_num, const tensor_data_t *output_data){
+void runner_release_output(unsigned int output_num, const tensor_data_t *output_data){
     for(size_t i=0; i<output_num; i++){
         delete [] output_data[i].data;
     }

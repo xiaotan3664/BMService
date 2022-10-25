@@ -181,6 +181,7 @@ size_t BMTensor::get_dtype_len() const {
     } else {
         BMLOG(FATAL, "Not support dtype=%d", t);
     }
+    return 0;
 }
 
 ssize_t BMTensor::partial_shape_count(size_t begin, size_t end)
