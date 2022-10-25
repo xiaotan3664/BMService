@@ -70,6 +70,7 @@ class BMService:
             device_num = ct.c_int(len(devices))
             self.__lib.runner_use_devices(device_ids, device_num)
         self.runner_id = self.__lib.runner_start_with_batch(ct.c_char_p(bytes(bmodel_path, encoding='utf-8')), batch)
+        self.bm_inputs_kv = {}
         if devices is not None:
             device_num = ct.c_int(0)
             self.__lib.runner_use_devices(device_ids, device_num)
@@ -106,7 +107,9 @@ class BMService:
         inputs = [i if i.data.c_contiguous else np.ascontiguousarray(i) for i in inputs]
         for i in range(len(inputs)):
             bm_inputs[i].from_numpy(inputs[i])
-        task_id = self.__lib.runner_put_input(self.runner_id, input_num, bm_inputs, 1)
+        # do not copy tensor
+        task_id = self.__lib.runner_put_input(self.runner_id, input_num, bm_inputs, 0)
+        self.bm_inputs_kv[task_id] = bm_inputs
         return task_id
         
     def get(self):
@@ -181,6 +184,10 @@ class BMService:
         for i in range(output_num.value):
             outputs.append(output_tensors[i].to_numpy())
         self.__lib.runner_release_output(output_num, output_tensors)
+        try:
+            self.bm_inputs_kv.pop(task_id.value)
+        except KeyError:
+            pass
         return task_id.value, outputs, True
 
     def infer_one(self, *inputs):
