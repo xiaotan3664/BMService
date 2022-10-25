@@ -191,6 +191,7 @@ static bool split_id_and_label(const std::string& line, size_t& id, std::string&
         label = std::string(iter+1, line.end());
         id = std::stoul(classStr);
     }
+    return true;
 }
 
 std::map<size_t, std::string> loadLabels(const std::string &filename)

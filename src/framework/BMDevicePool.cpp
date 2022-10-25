@@ -50,6 +50,33 @@ void BMDeviceContext::freeDeviceMem(bm_device_mem_t &mem){
     mem_to_free.erase(iter);
 }
 
+bm_device_mem_t BMDeviceContext::getOrAllocNamedDeviceMem(const std::string& name, size_t byte_size){
+    if(name_to_mem.count(name)>0) {
+        auto& mem = name_to_mem.at(name);
+        auto old_byte_size = bm_mem_get_device_size(mem);
+        if(old_byte_size <= byte_size) {
+            return mem;
+        }
+        bm_free_device(handle, mem);
+    }
+    bm_device_mem_t mem;
+    if(bm_malloc_device_byte(handle, &mem, byte_size) != BM_SUCCESS){
+        BMLOG(FATAL, "cannot alloc device mem, size=%d", byte_size);
+    }
+    name_to_mem[name] = mem;
+    return mem;
+}
+
+void BMDeviceContext::freeNamedDeviceMem(const std::string& name){
+    if(name_to_mem.count(name)==0) {
+        BMLOG(WARNING, "cannot find named mem '%s'", name.c_str());
+        return;
+    }
+    auto& mem = name_to_mem.at(name);
+    bm_free_device(handle, mem);
+    name_to_mem.erase(name);
+}
+
 void BMDeviceContext::allocMemForTensor(TensorPtr tensor){
     auto mem_size = tensor->get_mem_size();
     auto mem = allocDeviceMem(mem_size);
@@ -108,6 +135,12 @@ BMDeviceContext::~BMDeviceContext() {
     for(auto m : mems){
         freeDeviceMem(m);
     }
+
+    auto named_mems = name_to_mem;
+    for(auto& item: named_mems){
+        freeNamedDeviceMem(item.first);
+    }
+    
     auto images = images_to_free;
     for(auto& image: images){
         freeImages(image);
